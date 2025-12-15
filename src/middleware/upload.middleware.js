@@ -5,19 +5,32 @@ import { sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
 // Create uploads directory if it doesn't exist
-const uploadsDir = path.join(process.cwd(), 'uploads', 'temp');
+// For Railway, use /tmp for temporary uploads
+const isRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID;
+const uploadsDir = isRailway
+  ? '/tmp/uploads/temp'
+  : path.join(process.cwd(), 'uploads', 'temp');
+
+console.log('📁 Environment:', isRailway ? 'Railway' : 'Local');
 console.log('📁 Checking uploads directory:', uploadsDir);
-if (!fs.existsSync(uploadsDir)) {
-  console.log('📁 Creating uploads directory...');
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log('✅ Uploads directory created');
-} else {
-  console.log('✅ Uploads directory exists');
+
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    console.log('📁 Creating uploads directory...');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('✅ Uploads directory created');
+  } else {
+    console.log('✅ Uploads directory exists');
+  }
+} catch (error) {
+  console.warn('⚠️ Could not create uploads directory:', error.message);
+  console.warn('📁 Using system temp directory');
 }
 
 // Multer storage configuration for temporary storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // Use the determined uploads directory
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
