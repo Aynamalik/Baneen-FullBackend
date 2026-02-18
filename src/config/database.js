@@ -19,10 +19,7 @@ const mongooseOptions = {
   socketTimeoutMS: 45000,
 };
 
-/**
- * Connect to MongoDB database
- * @returns {Promise<void>}
- */
+
 export const connectDatabase = async () => {
   try {
     // For Vercel serverless functions, check if already connected

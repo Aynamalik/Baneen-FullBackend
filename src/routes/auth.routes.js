@@ -1,6 +1,5 @@
 import express from 'express';
 import {
-  register,
   login,
   verifyOTP,
   requestOTP,
@@ -8,90 +7,68 @@ import {
   logout,
   getCurrentUser,
   forgotPassword,
+  verifyResetOtp,
   resetPassword,
+  verifyDriverOTP
 } from '../controllers/auth.controller.js';
+import { registerDriver,registerPassenger} from '../controllers/auth.controller.js';
+import { registerDriverSchema} from '../utils/driver.schema.js';
+import { registerPassengerSchema } from '../utils/validators.js';
+import { validateFiles,handleUploads,cleanupTempFiles } from '../middleware/upload.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validation.middleware.js';
+import { injectVerificationTokenFromCookie } from '../middleware/verificationToken.middleware.js';
 import {
   registerSchema,
   loginSchema,
   verifyOTPSchema,
   forgotPasswordSchema,
+  verifyResetOtpSchema,
   resetPasswordSchema,
 } from '../utils/validators.js';
 import { authLimiter, otpLimiter } from '../middleware/rateLimit.middleware.js';
-import { uploadCNICImage, validateCNICImage } from '../middleware/upload.middleware.js';
 
 const router = express.Router();
 
-/**
- * @route   POST /api/v1/auth/register
- * @desc    Register new user with CNIC image
- * @access  Public
- */
 router.post(
-  '/register',
-  authLimiter,
-  uploadCNICImage,
-  validateCNICImage,
-  validate(registerSchema),
-  register
+  '/register-driver',authLimiter,
+  handleUploads([
+    { name: 'cnicImage', maxCount: 1 },
+    { name: 'licensePic', maxCount: 1 },
+    { name: 'vehiclePermitPic', maxCount: 1 }
+  ]),
+  validate(registerDriverSchema),
+  registerDriver,
+  cleanupTempFiles
 );
 
-/**
- * @route   POST /api/v1/auth/login
- * @desc    Login user
- * @access  Public
- */
+router.post(
+  '/register-passenger',
+  authLimiter,
+  handleUploads([{ name: 'cnicImage', maxCount: 1 }]),
+  validate(registerPassengerSchema),
+  registerPassenger,
+  cleanupTempFiles
+);
+
+router.post('/verify-driver-otp', injectVerificationTokenFromCookie, validate(verifyOTPSchema), verifyDriverOTP);
+
 router.post('/login',authLimiter, validate(loginSchema), login);
 
-/**
- * @route   POST /api/v1/auth/request-otp
- * @desc    Request OTP for verification
- * @access  Public
- */
 router.post('/request-otp', otpLimiter, requestOTP);
 
-/**
- * @route   POST /api/v1/auth/verify-otp
- * @desc    Verify OTP
- * @access  Public
- */
-router.post('/verify-otp', validate(verifyOTPSchema), verifyOTP);
+router.post('/verify-otp', injectVerificationTokenFromCookie, validate(verifyOTPSchema), verifyOTP);
 
-/**
- * @route   POST /api/v1/auth/forgot-password
- * @desc    Request password reset
- * @access  Public
- */
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), forgotPassword);
 
-/**
- * @route   POST /api/v1/auth/reset-password
- * @desc    Reset password with OTP
- * @access  Public
- */
+router.post('/verify-reset-otp', validate(verifyResetOtpSchema), verifyResetOtp);
+
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
 
-/**
- * @route   POST /api/v1/auth/refresh-token
- * @desc    Refresh access token
- * @access  Public
- */
 router.post('/refresh-token', refreshToken);
 
-/**
- * @route   POST /api/v1/auth/logout
- * @desc    Logout user
- * @access  Private
- */
 router.post('/logout', authenticate, logout);
 
-/**
- * @route   GET /api/v1/auth/me
- * @desc    Get current user profile
- * @access  Private
- */
 router.get('/me', authenticate, getCurrentUser);
 
 export default router;

@@ -9,18 +9,35 @@ const vehicleSchema = new mongoose.Schema({
   },
   registrationNumber: {
     type: String,
-    required: true,
-    unique: true,
+    required: false,
+    default: null,
+    // unique: true,
   },
   model: {
     type: String,
-    required: true,
+    required: false,
+    default: null,
   },
   year: {
     type: Number,
-    required: true,
+    required: false,
+    default: null,
   },
   color: {
+    type: String,
+    required: false,
+    default: null,
+  },
+  vehicleType: {
+    type: String,
+    enum: ['car', 'bike'],
+    required: true,
+  },
+  vehicleName: {
+    type: String,
+    required: true,
+  },
+  owner: {
     type: String,
     required: true,
   },
@@ -98,11 +115,16 @@ const driverSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    address: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     licenseNumber: {
       type: String,
       required: false,
       default: null,
-      unique: true,
+      // unique: true,
       sparse: true,
       index: true,
     },
@@ -160,6 +182,11 @@ const driverSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    status: {
+      type: String,
+      enum: ['OFFLINE', 'ONLINE', 'ON_RIDE'],
+      default: 'OFFLINE'
+    },
   },
   {
     timestamps: true,
@@ -168,10 +195,6 @@ const driverSchema = new mongoose.Schema(
 
 // Indexes
 driverSchema.index({ 'availability.status': 1 });
-// Geospatial index will be created when driver has valid coordinates
-// driverSchema.index({ 'availability.currentLocation': '2dsphere' });
-
-// Method to update availability
 driverSchema.methods.updateAvailability = function (status, location) {
   this.availability.status = status;
   if (location) {
@@ -188,7 +211,7 @@ driverSchema.methods.updateAvailability = function (status, location) {
 driverSchema.methods.isAvailable = function () {
   return (
     this.isApproved &&
-    this.availability.status === DRIVER_AVAILABILITY.ONLINE
+    this.availability.status === DRIVER_AVAILABILITY.AVAILABLE
   );
 };
 

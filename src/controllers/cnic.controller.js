@@ -7,9 +7,6 @@ import {
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
-/**
- * Upload and verify CNIC image
- */
 export const uploadCNICImage = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -19,7 +16,6 @@ export const uploadCNICImage = async (req, res) => {
       return sendError(res, 'CNIC image is required', 400);
     }
 
-    // Get user to get their CNIC number for verification
     const User = (await import('../models/User.js')).default;
     const user = await User.findById(userId);
 
@@ -67,9 +63,6 @@ export const getCNICStatus = async (req, res) => {
   }
 };
 
-/**
- * Manually verify CNIC (Admin function)
- */
 export const verifyCNIC = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -94,9 +87,6 @@ export const verifyCNIC = async (req, res) => {
   }
 };
 
-/**
- * Delete CNIC image
- */
 export const removeCNICImage = async (req, res) => {
   try {
     const userId = req.user.userId;

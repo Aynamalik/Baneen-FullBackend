@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/error.middleware.js';
 import logger from './utils/logger.js';
@@ -20,6 +21,7 @@ const corsOptions = {
 
 // Middleware
 app.use(cors(corsOptions));
+app.use(cookieParser()); // Parse cookies
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -45,16 +47,34 @@ app.get('/health', (req, res) => {
 
 // API routes
 import authRoutes from './routes/auth.routes.js';
-import cnicRoutes from './routes/cnic.routes.js';
+import rideRoutes from './routes/ride.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import mapsRoutes from './routes/maps.routes.js';
+import subscriptionRoutes from './routes/subscription.routes.js';
+import paymentRoutes from './routes/payment.routes.js';
+import passengerRoutes from './routes/passenger.routes.js';
+import driverRoutes from './routes/driver.routes.js';
+import voiceRoutes from './routes/voice.routes.js';
+import chatbotRoutes from './routes/chatbot.routes.js';
+import driverMatchingRoutes from './routes/driverMatching.routes.js';
+import cancellationRoutes from './routes/cancellation.routes.js';
+import chatRoutes from './routes/chat.routes.js';
+import notificationRoutes from './routes/notification.routes.js';
 
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
-app.use(`/api/${API_VERSION}/cnic`, cnicRoutes);
-
-// Other routes will be added here
-// app.use(`/api/${API_VERSION}/passengers`, passengerRoutes);
-// app.use(`/api/${API_VERSION}/drivers`, driverRoutes);
-// app.use(`/api/${API_VERSION}/rides`, rideRoutes);
-// app.use(`/api/${API_VERSION}/admin`, adminRoutes);
+app.use(`/api/${API_VERSION}/rides`, rideRoutes);
+app.use(`/api/${API_VERSION}/admin`, adminRoutes);
+app.use(`/api/${API_VERSION}/maps`, mapsRoutes);
+app.use(`/api/${API_VERSION}/subscriptions`, subscriptionRoutes);
+app.use(`/api/${API_VERSION}/payments`, paymentRoutes);
+app.use(`/api/${API_VERSION}/passengers`, passengerRoutes);
+app.use(`/api/${API_VERSION}/drivers`, driverRoutes);
+app.use(`/api/${API_VERSION}/voice`, voiceRoutes);
+app.use(`/api/${API_VERSION}/chatbot`, chatbotRoutes);
+app.use(`/api/${API_VERSION}/matching`, driverMatchingRoutes);
+app.use(`/api/${API_VERSION}/cancellation`, cancellationRoutes);
+app.use(`/api/${API_VERSION}/chat`, chatRoutes);
+app.use(`/api/${API_VERSION}/notifications`, notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

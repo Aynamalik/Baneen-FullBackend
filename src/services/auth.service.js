@@ -6,8 +6,9 @@ import Driver from '../models/Driver.js';
 import Admin from '../models/Admin.js';
 import { generateOTP } from '../utils/helpers.js';
 import { USER_ROLES } from '../config/constants.js';
-import { uploadAndVerifyCNIC } from './cnic.service.js';
 import logger from '../utils/logger.js';
+import axios from 'axios';
+import { DRIVER_AVAILABILITY } from '../config/constants.js';
 
 // Load environment variablesxzad
 dotenv.config();
@@ -20,180 +21,167 @@ const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
   throw new Error('JWT secrets are not defined in environment variables');
 }
+const BASE_FARE = 100;
+const PER_KM_RATE = 30;
+const DRIVER_SEARCH_RADIUS_KM = 5;
 
-/**
- * Generate JWT access token
- * @param {Object} payload - Token payload
- * @returns {string} - JWT token
- */
+// 🔹 Google Maps Distance Helper
+export const getDistanceFromGoogle = async (pickup, dropoff) => {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?units=metric&origins=${pickup.latitude},${pickup.longitude}&destinations=${dropoff.latitude},${dropoff.longitude}&key=${apiKey}`;
+
+  const response = await axios.get(url);
+
+  console.log('GOOGLE RAW RESPONSE:', JSON.stringify(response.data, null, 2));
+
+  const element = response?.data?.rows?.[0]?.elements?.[0];
+
+  if (!element) {
+    throw new Error(
+      response?.data?.error_message || 'Invalid Google Maps response'
+    );
+  }
+
+  return {
+    distanceMeters: element.distance.value,
+    durationSeconds: element.duration.value,
+  };
+};
+
 export const generateAccessToken = (payload) => {
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_EXPIRES_IN,
   });
 };
 
-/**
- * Generate JWT refresh token
- * @param {Object} payload - Token payload
- * @returns {string} - JWT refresh token
- */
 export const generateRefreshToken = (payload) => {
   return jwt.sign(payload, JWT_REFRESH_SECRET, {
     expiresIn: JWT_REFRESH_EXPIRES_IN,
   });
 };
 
-/**
- * Verify JWT access token
- * @param {string} token - JWT token
- * @returns {Object} - Decoded token payload
- */
 export const verifyAccessToken = (token) => {
   return jwt.verify(token, JWT_SECRET);
 };
 
-/**
- * Verify JWT refresh token
- * @param {string} token - JWT refresh token
- * @returns {Object} - Decoded token payload
- */
 export const verifyRefreshToken = (token) => {
   return jwt.verify(token, JWT_REFRESH_SECRET);
 };
 
-/**
- * Register new user
- * @param {Object} userData - User registration data
- * @param {Object} cnicImageFile - CNIC image file (required)
- * @returns {Promise<Object>} - Created user and profile
- */
-export const registerUser = async (userData, cnicImageFile) => {
-  const { email, phone, password, role, cnic, name } = userData;
+import bcrypt from 'bcryptjs';
 
-  // Validate that CNIC image is provided
-  if (!cnicImageFile) {
-    throw new Error('CNIC image is required for registration');
-  }
+export const registerDriverService = async (userData, files) => {
+  const { name, email, phone, alternatePhone, cnic, password, vehicleType, vehicleName, owner, address } = userData;
 
-  // Check if user already exists
-  const existingUser = await User.findOne({
-    $or: [{ email }, { phone }, { cnic }],
-  });
+  // 1️⃣ Check if user already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) throw new Error('Email already registered');
 
-  if (existingUser) {
-    if (existingUser.email === email) {
-      throw new Error('Email already registered');
-    }
-    if (existingUser.phone === phone) {
-      throw new Error('Phone number already registered');
-    }
-    if (existingUser.cnic === cnic) {
-      throw new Error('CNIC already registered');
-    }
-  }
+  const existingCnic = await User.findOne({ cnic });
+  if (existingCnic) throw new Error('CNIC is already registered with another account');
 
-  // Create user first (without CNIC image initially)
-  const user = new User({
+  // 2️⃣ Create user (password will be hashed by pre-save middleware)
+  // Note: User model doesn't have 'name' field - name is stored in Driver profile
+  const user = await User.create({
     email,
     phone,
-    password,
-    role,
+    alternatePhone,
     cnic,
-    cnicImage: null, // Will be updated after upload
-    cnicVerificationStatus: 'pending',
+    cnicImage: files.cnicImage, // Store CNIC image in User model
+    password: password, // Plain text - will be hashed by User model pre-save middleware
+    role: 'driver'
   });
-  await user.save();
-  console.log('✅ User created with ID:', user._id);
 
-  // Now upload CNIC image with the user ID
-  let cnicImageUrl = null;
-  try {
-    console.log('🔄 Uploading CNIC image for user:', user._id);
-    const uploadResult = await uploadAndVerifyCNIC(cnicImageFile, user._id, cnic);
-    cnicImageUrl = uploadResult.imageUrl;
+  // 3️⃣ Create driver profile with uploaded files and vehicle information
+  const profile = await Driver.create({
+    userId: user._id,
+    name: name,
+    address: address,
+    licenseImage: files.licensePic, // Driver model has 'licenseImage' field, not 'licensePic'
+    vehicle: {
+      vehicleType: vehicleType,
+      vehicleName: vehicleName,
+      owner: owner
+    }
+    // Note: vehiclePermitPic is not stored as Driver model doesn't have this field
+    // If needed, consider adding it to the schema or storing elsewhere
+  });
 
-    // Update user with CNIC image URL
-    user.cnicImage = cnicImageUrl;
-    await user.save();
-    console.log('✅ CNIC image uploaded and user updated');
-  } catch (uploadError) {
-    console.error('❌ CNIC upload failed during registration:', uploadError);
-    // Don't throw error here - allow registration to complete
-    // User can upload CNIC later through separate endpoint
-    logger.warn('CNIC upload failed, but continuing with registration');
-  }
+  // 4️⃣ Generate tokens
+  const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
-  // Create role-specific profile
-  let profile;
-  if (role === USER_ROLES.PASSENGER) {
-    profile = new Passenger({
-      userId: user._id,
-      name,
-    });
-    await profile.save();
-  } else if (role === USER_ROLES.DRIVER) {
-    profile = new Driver({
-      userId: user._id,
-      name,
-    });
-    await profile.save();
-  } else if (role === USER_ROLES.ADMIN) {
-    profile = new Admin({
-      userId: user._id,
-      name,
-    });
-    await profile.save();
-  }
+  logger.info(`Driver registered successfully: ${email}`);
 
-  // Generate tokens
-  const tokenPayload = {
-    userId: user._id.toString(),
-    role: user.role,
-    email: user.email,
-  };
+  return { user, profile, accessToken, refreshToken };
+};
+export const registerPassengerService = async (userData, files) => {
+  const { name, email, phone, cnic, password } = userData;
 
-  const accessToken = generateAccessToken(tokenPayload);
-  const refreshToken = generateRefreshToken(tokenPayload);
+  if(!name || !email || !phone || !cnic || !password) throw new Error('All fields are required');
 
-  // Save refresh token to user
-  user.refreshToken = refreshToken;
-  await user.save();
+  // Check if user already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) throw new Error('Email already registered');
 
-  return {
-    user: {
-      _id: user._id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      isVerified: user.isVerified,
-      cnicImage: user.cnicImage,
-      cnicVerificationStatus: user.cnicVerificationStatus,
-    },
-    profile,
-    accessToken,
-    refreshToken,
-  };
+  const existingCnic = await User.findOne({ cnic });
+  if (existingCnic) throw new Error('CNIC is already registered with another account');
+
+  // Create user (password will be hashed by pre-save middleware)
+  const user = await User.create({
+    email,
+    phone,
+    cnic,
+    password: password, // Plain text - will be hashed by User model pre-save middleware
+    role: 'passenger'
+  });
+
+  // Create passenger profile with CNIC picture
+  console.log('Creating passenger with:', {
+    userId: user._id,
+    name: name,
+    cnicImage: files.cnicImage
+  });
+  const profile = await Passenger.create({
+    userId: user._id,
+    name: name,
+    cnicImage: files.cnicImage
+  });
+
+  // Generate JWT tokens
+  const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+  const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+
+  logger.info(`Passenger registered: ${email}`);
+
+  return { user, profile, accessToken, refreshToken };
 };
 
-/**
- * Login user
- * @param {Object} credentials - Login credentials (email/phone and password)
- * @returns {Promise<Object>} - User data and tokens
- */
 export const loginUser = async (credentials) => {
   const { email, phone, password } = credentials;
 
   // Find user by email or phone
-  const user = await User.findOne({
-    $or: email ? [{ email }] : [{ phone }],
-  }).select('+password');
+  let query;
+  if (email && phone) {
+    // If both are provided, try to match either
+    query = { $or: [{ email }, { phone }] };
+  } else if (email) {
+    query = { email };
+  } else if (phone) {
+    query = { phone };
+  } else {
+    throw new Error('Email or phone is required');
+  }
+
+  const user = await User.findOne(query).select('+password');
 
   if (!user) {
     throw new Error('Invalid credentials');
   }
 
   // Check if user is blocked
-  if (user.isBlocked) {
+  if (user.isBlocked) { 
     throw new Error('Account is blocked. Please contact support.');
   }
 
@@ -250,29 +238,16 @@ export const loginUser = async (credentials) => {
   };
 };
 
-/**
- * Generate OTP for phone verification
- * @param {string} phone - Phone number
- * @returns {Promise<string>} - Generated OTP
- */
 export const generateOTPForPhone = async (phone) => {
-  // In production, this would send OTP via SMS
-  // For now, we'll just generate and return it
   const otp = generateOTP(6);
   logger.info(`OTP for ${phone}: ${otp}`); // Remove in production
   return otp;
 };
 
-/**
- * Refresh access token
- * @param {string} refreshToken - Refresh token
- * @returns {Promise<Object>} - New access token
- */
 export const refreshAccessToken = async (refreshToken) => {
   try {
     const decoded = verifyRefreshToken(refreshToken);
 
-    // Find user and verify refresh token
     const user = await User.findById(decoded.userId).select('+refreshToken');
     if (!user || user.refreshToken !== refreshToken) {
       throw new Error('Invalid refresh token');
@@ -293,11 +268,7 @@ export const refreshAccessToken = async (refreshToken) => {
   }
 };
 
-/**
- * Logout user
- * @param {string} userId - User ID
- * @returns {Promise<void>}
- */
+
 export const logoutUser = async (userId) => {
   await User.findByIdAndUpdate(userId, {
     $unset: { refreshToken: 1 },

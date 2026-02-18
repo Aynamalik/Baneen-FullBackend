@@ -3,21 +3,23 @@ import User from '../models/User.js';
 import { sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
-/**
- * Authentication middleware - Verify JWT token
- */
 export const authenticate = async (req, res, next) => {
   try {
-    // Get token from header
-    const authHeader = req.headers.authorization;
+    // Get token from cookie first, then try header as fallback
+    let token = req.cookies?.accessToken;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Fallback to Authorization header if cookie not found
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7); // Remove 'Bearer ' prefix
+      }
+    }
+
+    if (!token) {
       return sendError(res, 'No token provided', 401);
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
-    // Verify token
     let decoded;
     try {
       decoded = verifyAccessToken(token);
@@ -49,6 +51,8 @@ export const authenticate = async (req, res, next) => {
       isVerified: user.isVerified,
     };
 
+    console.log("This is user object from middleware---------->",req.user)
+
     next();
   } catch (error) {
     logger.error('Authentication error:', error);
@@ -56,15 +60,20 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
-/**
- * Optional authentication - Attach user if token is valid, but don't require it
- */
+
 export const optionalAuthenticate = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    // Get token from cookie first, then try header as fallback
+    let token = req.cookies?.accessToken;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+
+    if (token) {
       try {
         const decoded = verifyAccessToken(token);
         const user = await User.findById(decoded.userId);

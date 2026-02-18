@@ -5,27 +5,14 @@ import fs from 'fs';
 import path from 'path';
 import { createWorker } from 'tesseract.js';
 
-/**
- * CNIC number validation regex
- * Pakistani CNIC format: 12345-1234567-1
- */
+
 const CNIC_REGEX = /^[0-9]{5}-[0-9]{7}-[0-9]{1}$/;
 
-/**
- * Validate CNIC number format
- * @param {string} cnic - CNIC number to validate
- * @returns {boolean} - True if valid format
- */
+
 export const validateCNICFormat = (cnic) => {
   return CNIC_REGEX.test(cnic);
 };
 
-/**
- * Check if two CNIC numbers are similar (allowing for OCR errors)
- * @param {string} extracted - CNIC extracted from image
- * @param {string} provided - CNIC provided by user
- * @returns {boolean} - True if similar enough for auto-verification
- */
 const areCNICsSimilar = (extracted, provided) => {
   if (!extracted || !provided || extracted.length !== provided.length) {
     return false;
@@ -36,7 +23,6 @@ const areCNICsSimilar = (extracted, provided) => {
   for (let i = 0; i < extracted.length; i++) {
     if (extracted[i] !== provided[i]) {
       differences++;
-      // Allow maximum 2-3 digit differences (OCR errors)
       if (differences > 3) {
         return false;
       }

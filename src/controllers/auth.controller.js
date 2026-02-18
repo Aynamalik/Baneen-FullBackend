@@ -1,23 +1,170 @@
 import {
-  registerUser,
   loginUser,
   refreshAccessToken,
   logoutUser,
   generateOTPForPhone,
+  registerDriverService,
+  registerPassengerService
 } from '../services/auth.service.js';
-import { generateAndStoreOTP, verifyOTP as verifyOTPService } from '../services/otp.service.js';
+import { uploadImage } from '../config/cloudinary.js';
+import { verifyOtpCode } from "../utils/otp.js";
+import { generateAndStoreOTP, verifyOTP as verifyOTPService, generateResetToken, verifyResetToken, storeRegistrationData, getRegistrationData, removeRegistrationData, generateVerificationToken, getPhoneFromVerificationToken, removeVerificationToken } from '../services/otp.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
+import { formatPhoneNumber, isValidPhone } from '../utils/helpers.js';
 import User from '../models/User.js';
+import Driver from '../models/Driver.js';
 import logger from '../utils/logger.js';
+import { sendSMS } from '../services/sms.service.js';
+import { sendOTPEmail } from '../services/email.service.js';
+import jwt from 'jsonwebtoken';
 
-/**
- * Register new user
- */
-export const register = async (req, res) => {
+export const registerDriver = async (req,res) =>{
   try {
     const userData = req.body;
-    const cnicImageFile = req.file; // CNIC image uploaded during registration
-    const result = await registerUser(userData, cnicImageFile);
+    const cnicImageFile = req.files?.cnicImage?.[0];
+    const vehiclePermitPic =  req.files?.vehiclePermitPic?.[0];
+    const licensePic =  req.files?.licensePic?.[0];
+    if (!cnicImageFile || !licensePic) {
+      return sendError(res, 'Required documents are missing', 400);
+    }
+
+    if (!isValidPhone(userData.phone)) {
+      logger.error(`Invalid phone number format: ${userData.phone}`);
+      return sendError(res, 'Invalid phone number format. Please use a valid Pakistani phone number (e.g., +923001234567, 03001234567, or 3001234567).', 400);
+    }
+
+    const User = (await import('../models/User.js')).default;
+    const existingUser = await User.findOne({
+         email: userData.email 
+      
+    });
+    if (existingUser) {
+      return sendError(res, 'Email  already registered', 400);
+    }
+
+    const existingCnic = await User.findOne({ cnic: userData.cnic });
+    if (existingCnic) {
+      return sendError(res, 'CNIC is already registered with another account', 400);
+    }
+
+    const uploadPromises = [
+      uploadImage(cnicImageFile.path, { folder: 'baneen/cnic' }).then((r) => r.url),
+      uploadImage(licensePic.path, { folder: 'baneen/driver-license' }).then((r) => r.url),
+    ];
+    if (vehiclePermitPic) {
+      uploadPromises.push(
+        uploadImage(vehiclePermitPic.path, { folder: 'baneen/vehicle-permit' }).then((r) => r.url)
+      );
+    }
+
+    let uploadedUrls;
+    try {
+      const results = await Promise.all(uploadPromises);
+      uploadedUrls = {
+        cnicImage: results[0],
+        licensePic: results[1],
+        vehiclePermitPic: results[2] || null,
+      };
+    } catch (uploadErr) {
+      logger.error('Cloudinary upload failed:', uploadErr);
+      return sendError(res, 'Failed to upload documents. Please try again.', 500);
+    }
+
+    const registrationData = {
+      userData,
+      files: uploadedUrls,
+      type: 'driver'
+    };
+
+    const isTestNumber = process.env.NODE_ENV === 'development' && (userData.phone === '1234' || userData.phone === '1234567890' || userData.phone === '0000000000');
+    const registrationKey = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+    await storeRegistrationData(registrationKey, registrationData);
+
+    const phoneForOTP = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+
+    logger.info(`Original phone: ${userData.phone}, Phone for OTP: ${phoneForOTP}`);
+
+    const otp = await generateAndStoreOTP(phoneForOTP);
+    logger.info(`Generated OTP for driver registration: ${otp}`);
+
+    const verificationToken = await generateVerificationToken(phoneForOTP);
+
+    if (isTestNumber) {
+      logger.info(`Skipping SMS send for test phone number: ${userData.phone}. OTP: ${otp}`);
+    } else {
+      const formattedPhone = formatPhoneNumber(userData.phone);
+      try {
+        await sendSMS(formattedPhone, `Your Baneen driver registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
+      } catch (smsError) {
+        if (process.env.NODE_ENV === 'development') {
+          logger.warn(`SMS failed in development (e.g. Twilio trial). Use this OTP to verify: ${otp}`);
+         
+        } else {
+          throw smsError;
+        }
+      }
+    }
+
+    res.cookie('verificationToken', verificationToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000, // 10 minutes (matches OTP expiry)
+    });
+
+    return sendSuccess(
+      res,
+      {
+        message: 'OTP sent to your phone. Please verify to complete registration.',
+        phone: userData.phone,
+      },
+      'Registration OTP sent successfully'
+    );
+  } catch (error) {
+    logger.error('Driver registration OTP error:', error);
+    if (error.code === 11000) {
+      const field = error.keyPattern?.cnic ? 'CNIC' : error.keyPattern?.email ? 'Email' : 'Phone';
+      return sendError(res, `${field} is already registered with another account`, 400);
+    }
+    return sendError(res, error.message || 'Failed to send registration OTP', 400);
+  }
+};
+export const verifyDriverOTP = async (req, res) => {
+  try {
+    const { verificationToken: bodyToken, phone, otp } = req.body;
+    const verificationToken = bodyToken || req.cookies?.verificationToken;
+
+    if (!otp) return sendError(res, 'OTP is required', 400);
+
+    let resolvedPhone;
+    if (verificationToken) {
+      resolvedPhone = await getPhoneFromVerificationToken(verificationToken);
+      if (!resolvedPhone) return sendError(res, 'Invalid or expired verification token', 400);
+      await removeVerificationToken(verificationToken);
+    } else if (phone) {
+      resolvedPhone = formatPhoneNumber(phone);
+    } else {
+      return sendError(res, 'Verification token or phone is required', 400);
+    }
+
+    const isValid = await verifyOTPService(resolvedPhone, otp);
+    if (!isValid) return sendError(res, 'Invalid or expired OTP', 400);
+
+    const registrationData = await getRegistrationData(resolvedPhone);
+    if (!registrationData || registrationData.type !== 'driver') {
+      return sendError(res, 'No registration data found. Please try registering again.', 400);
+    }
+
+    const result = await registerDriverService(
+      registrationData.userData,
+      registrationData.files
+    );
+
+    await removeRegistrationData(resolvedPhone);
+
+    res.clearCookie('verificationToken');
+
+    logger.info(`Driver registration completed successfully for phone: ${resolvedPhone}`);
 
     return sendSuccess(
       res,
@@ -27,22 +174,44 @@ export const register = async (req, res) => {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
       },
-      'User registered successfully',
+      'Driver registered successfully',
       201
     );
   } catch (error) {
-    logger.error('Registration error:', error);
-    return sendError(res, error.message || 'Registration failed', 400);
+    logger.error('Driver OTP verification error:', error);
+    if (error.code === 11000) {
+      const field = error.keyPattern?.cnic ? 'CNIC' : error.keyPattern?.email ? 'Email' : 'Phone';
+      return sendError(res, `${field} is already registered with another account`, 400);
+    }
+    return sendError(res, error.message || 'Failed to verify OTP and complete registration', 500);
   }
 };
 
-/**
- * Login user
- */
 export const login = async (req, res) => {
   try {
     const credentials = req.body;
     const result = await loginUser(credentials);
+
+    console.log('🔐 Setting authentication cookies...');
+    const cookieOptions = {
+      httpOnly: true,
+      secure: false, // Allow HTTP for development/testing
+      sameSite: 'lax', // Allow cross-site in development
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours for access token
+    };
+
+    res.cookie('accessToken', result.accessToken, {
+      ...cookieOptions,
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
+    console.log(' Access token cookie set');
+
+    res.cookie('refreshToken', result.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    console.log(' Refresh token cookie set');
+    console.log(' Sending success response...');
 
     return sendSuccess(
       res,
@@ -51,6 +220,7 @@ export const login = async (req, res) => {
         profile: result.profile,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
+        message: 'Login successful. Tokens stored in cookies.',
       },
       'Login successful'
     );
@@ -60,34 +230,203 @@ export const login = async (req, res) => {
   }
 };
 
+export const logout = async (req, res) => {
+  try {
+    // Clear authentication cookies
+    const cookieOptions = {
+      httpOnly: true,
+      secure: false, // Allow HTTP for development/testing
+      sameSite: 'lax',
+    };
+
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+
+    // Optionally clear refresh token from database
+    if (req.user) {
+      await User.findByIdAndUpdate(req.user.userId, { refreshToken: null });
+    }
+
+    return sendSuccess(res, { message: 'Logged out successfully' }, 'Logout successful');
+  } catch (error) {
+    logger.error('Logout error:', error);
+    return sendError(res, 'Logout failed', 500);
+  }
+};
+
+export const registerPassenger = async (req, res) => {
+  try {
+    const userData = req.body;
+    const cnicImageFile = req.files?.cnicImage?.[0];
+
+    if (!cnicImageFile) {
+      return sendError(res, 'CNIC image is required', 400);
+    }
+
+    // Validate phone number
+    if (!isValidPhone(userData.phone)) {
+      logger.error(`Invalid phone number format: ${userData.phone}`);
+      return sendError(res, 'Invalid phone number format. Please use a valid Pakistani phone number (e.g., +923001234567, 03001234567, or 3001234567).', 400);
+    }
+
+    // Check if user already exists
+    const User = (await import('../models/User.js')).default;
+    const existingUser = await User.findOne({
+    
+         email: userData.email 
+    
+    });
+    if (existingUser) {
+      return sendError(res, 'Email already registered', 400);
+    }
+
+    const existingCnic = await User.findOne({ cnic: userData.cnic });
+    if (existingCnic) {
+      return sendError(res, 'CNIC is already registered with another account', 400);
+    }
+
+    // Upload CNIC image to Cloudinary before OTP (file is temp and gets cleaned up after response)
+    let cnicImageUrl;
+    try {
+      const uploadResult = await uploadImage(cnicImageFile.path, { folder: 'baneen/cnic' });
+      cnicImageUrl = uploadResult.url;
+    } catch (uploadErr) {
+      logger.error('Cloudinary upload failed:', uploadErr);
+      return sendError(res, 'Failed to upload CNIC image. Please try again.', 500);
+    }
+
+    // Store registration data with Cloudinary URL (not local filename)
+    const registrationData = {
+      userData,
+      files: {
+        cnicImage: cnicImageUrl
+      },
+      type: 'passenger'
+    };
+
+    const isTestNumber = process.env.NODE_ENV === 'development' && (userData.phone === '1234' || userData.phone === '1234567890' || userData.phone === '0000000000');
+    const registrationKey = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+    await storeRegistrationData(registrationKey, registrationData);
+
+    // Generate and send OTP
+    const phoneForOTP = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+
+    logger.info(`Original phone: ${userData.phone}, Phone for OTP: ${phoneForOTP}`);
+
+    const otp = await generateAndStoreOTP(phoneForOTP);
+    logger.info(`Generated OTP for passenger registration: ${otp}`);
+
+    const verificationToken = await generateVerificationToken(phoneForOTP);
+
+    // Skip SMS sending for test/development numbers
+    if (isTestNumber) {
+      logger.info(`Skipping SMS send for test phone number: ${userData.phone}. OTP: ${otp}`);
+    } else {
+      const formattedPhone = formatPhoneNumber(userData.phone);
+      await sendSMS(formattedPhone, `Your Baneen passenger registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
+    }
+
+    res.cookie('verificationToken', verificationToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000, // 10 minutes (matches OTP expiry)
+    });
+
+    return sendSuccess(
+      res,
+      {
+        message: 'OTP sent to your phone. Please verify to complete registration.',
+        phone: userData.phone,
+      },
+      'Registration OTP sent successfully'
+    );
+  } catch (error) {
+    logger.error('Passenger registration OTP error:', error);
+    if (error.code === 11000) {
+      const field = error.keyPattern?.cnic ? 'CNIC' : error.keyPattern?.email ? 'Email' : 'Phone';
+      return sendError(res, `${field} is already registered with another account`, 400);
+    }
+    return sendError(res, error.message || 'Failed to send registration OTP', 400);
+  }
+};
 /**
  * Verify OTP
+ * Accepts verificationToken + otp (no phone needed) OR phone + otp for backward compatibility
  */
 export const verifyOTP = async (req, res) => {
   try {
-    const { phone, otp } = req.body;
+    const { verificationToken: bodyToken, phone, otp } = req.body || {};
+    const verificationToken = bodyToken || req.cookies?.verificationToken;
 
-    if (!phone || !otp) {
-      return sendError(res, 'Phone and OTP are required', 400);
+    if (!otp) return sendError(res, 'OTP is required', 400);
+
+    let resolvedPhone;
+    if (verificationToken) {
+      resolvedPhone = await getPhoneFromVerificationToken(verificationToken);
+      if (!resolvedPhone) return sendError(res, 'Invalid or expired verification token', 400);
+      await removeVerificationToken(verificationToken);
+    } else if (phone) {
+      resolvedPhone = formatPhoneNumber(phone);
+    } else {
+      return sendError(res, 'Verification token or phone is required', 400);
     }
 
-    const isValid = verifyOTP(phone, otp);
+    const isValid = await verifyOTPService(resolvedPhone, otp);
+    if (!isValid) return sendError(res, 'Invalid or expired OTP', 400);
 
-    if (!isValid) {
-      return sendError(res, 'Invalid or expired OTP', 400);
+    const registrationData = await getRegistrationData(resolvedPhone);
+
+    if (registrationData) {
+      // Complete registration
+      let result;
+      if (registrationData.type === 'driver') {
+        result = await registerDriverService(
+          registrationData.userData,
+          registrationData.files
+        );
+      } else if (registrationData.type === 'passenger') {
+        result = await registerPassengerService(
+          registrationData.userData,
+          registrationData.files
+        );
+      }
+
+      // Remove registration data after successful registration
+      await removeRegistrationData(resolvedPhone);
+
+      res.clearCookie('verificationToken');
+
+      logger.info(`${registrationData.type} registration completed successfully for phone: ${resolvedPhone}`);
+
+      return sendSuccess(
+        res,
+        {
+          user: result.user,
+          profile: result.profile,
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
+        `${registrationData.type === 'driver' ? 'Driver' : 'Passenger'} registered successfully`,
+        201
+      );
+    } else {
+      // This is a login OTP verification
+      const user = await User.findOne({ phone: resolvedPhone });
+      if (user) {
+        user.isVerified = true;
+        await user.save();
+      }
+
+      return sendSuccess(res, { verified: true }, 'OTP verified successfully');
     }
-
-    // Update user verification status
-    const user = await User.findOne({ phone });
-    if (user) {
-      user.isVerified = true;
-      await user.save();
-    }
-
-    return sendSuccess(res, { verified: true }, 'OTP verified successfully');
   } catch (error) {
     logger.error('OTP verification error:', error);
-    return sendError(res, 'OTP verification failed', 400);
+    if (error.code === 11000) {
+      const field = error.keyPattern?.cnic ? 'CNIC' : error.keyPattern?.email ? 'Email' : 'Phone';
+      return sendError(res, `${field} is already registered with another account`, 400);
+    }
+    return sendError(res, error.message || 'OTP verification failed', 400);
   }
 };
 
@@ -109,15 +448,13 @@ export const requestOTP = async (req, res) => {
     }
 
     // Generate and store OTP
-    const otp = generateAndStoreOTP(phone);
-
-    // In production, send OTP via SMS
-    // For now, we'll just return success
-    // await sendSMS(phone, `Your OTP is: ${otp}`);
+    const formattedPhone = formatPhoneNumber(phone);
+    const otp = await generateAndStoreOTP(formattedPhone);
+    await sendSMS(formattedPhone, `Your Baneen OTP is ${otp}`);
 
     return sendSuccess(
       res,
-      { message: 'OTP sent successfully' },
+      null,
       'OTP sent to your phone'
     );
   } catch (error) {
@@ -131,7 +468,8 @@ export const requestOTP = async (req, res) => {
  */
 export const refreshToken = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    // Get refresh token from cookie
+    const refreshToken = req.cookies?.refreshToken;
 
     if (!refreshToken) {
       return sendError(res, 'Refresh token is required', 400);
@@ -139,31 +477,26 @@ export const refreshToken = async (req, res) => {
 
     const result = await refreshAccessToken(refreshToken);
 
-    return sendSuccess(res, result, 'Token refreshed successfully');
+    // Set new access token cookie
+    const cookieOptions = {
+      httpOnly: true,
+      secure: false, // Allow HTTP for development/testing
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    };
+
+    res.cookie('accessToken', result.accessToken, cookieOptions);
+
+    return sendSuccess(res, {
+      message: 'Token refreshed successfully. New access token set in cookie.'
+    }, 'Token refreshed successfully');
   } catch (error) {
     logger.error('Token refresh error:', error);
     return sendError(res, error.message || 'Token refresh failed', 401);
   }
 };
 
-/**
- * Logout user
- */
-export const logout = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    await logoutUser(userId);
 
-    return sendSuccess(res, null, 'Logout successful');
-  } catch (error) {
-    logger.error('Logout error:', error);
-    return sendError(res, 'Logout failed', 500);
-  }
-};
-
-/**
- * Get current user profile
- */
 export const getCurrentUser = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -211,39 +544,68 @@ export const getCurrentUser = async (req, res) => {
   }
 };
 
-/**
- * Forgot password - Request password reset
- */
 export const forgotPassword = async (req, res) => {
   try {
     const { email, phone } = req.body;
-    
+
     if (!email && !phone) {
       return sendError(res, 'Email or phone is required', 400);
     }
-
     const user = await User.findOne({
-      $or: email ? [{ email }] : [{ phone }],
+      $or: [
+        ...(email ? [{ email }] : []),
+        ...(phone ? [{ phone }] : [])
+      ],
     });
 
     if (!user) {
-      // Don't reveal if user exists for security
       return sendSuccess(
         res,
-        { message: 'If the account exists, a password reset link has been sent' },
+        { message: 'If the account exists, a password reset OTP has been sent' },
         'Password reset requested'
       );
     }
 
-    // Generate OTP for password reset
-    const otp = generateAndStoreOTP(user.phone);
+    let deliveryMethod = '';
 
-    // In production, send reset link/OTP via email/SMS
-    logger.info(`Password reset OTP for ${user.phone}: ${otp}`);
+    if (phone) {
+      try {
+        const isTestNumber = process.env.NODE_ENV === 'development' && (phone === '1234' || phone === '1234567890' || phone === '0000000000' || phone === '03001234567');
+        const phoneForOTP = isTestNumber ? phone : formatPhoneNumber(phone);
+
+        const otp = await generateAndStoreOTP(phoneForOTP);
+
+        // Skip SMS sending for test/development numbers
+        if (isTestNumber) {
+          logger.info(`Skipping SMS send for test phone number: ${phone}. OTP: ${otp}`);
+        } else {
+          await sendSMS(phoneForOTP, `Your Baneen password reset OTP is: ${otp}`);
+        }
+
+        deliveryMethod = 'phone';
+        logger.info(`Password reset OTP sent to phone: ${phoneForOTP}`);
+      } catch (error) {
+        logger.error('Failed to send SMS:', error);
+        return sendError(res, 'Failed to send OTP to phone. Please try again later.', 500);
+      }
+    } else if (email) {
+      try {
+        const otp = await generateAndStoreOTP(email);
+        await sendOTPEmail(email, otp);
+        deliveryMethod = 'email';
+        logger.info(`Password reset OTP sent to email: ${email}`);
+      } catch (error) {
+        logger.error('Failed to send email:', error);
+        return sendError(res, 'Failed to send OTP to email. Please try again later.', 500);
+      }
+    }
 
     return sendSuccess(
       res,
-      { message: 'Password reset instructions sent' },
+      {
+        message: `Password reset OTP sent to your ${deliveryMethod}`,
+        deliveryMethod
+      },
       'Password reset requested'
     );
   } catch (error) {
@@ -252,30 +614,84 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-/**
- * Reset password
- */
-export const resetPassword = async (req, res) => {
-  try {
-    const { phone, otp, newPassword } = req.body;
 
-    if (!phone || !otp || !newPassword) {
-      return sendError(res, 'Phone, OTP, and new password are required', 400);
+export const verifyResetOtp = async (req, res) => {
+  try {
+    const { identifier, otp } = req.body;
+
+    if (!identifier || !otp) {
+      return sendError(res, 'Identifier (email/phone) and OTP are required', 400);
     }
 
     // Verify OTP
-    const isValid = verifyOTPService(phone, otp);
+    const isValid = await verifyOTPService(identifier, otp);
     if (!isValid) {
       return sendError(res, 'Invalid or expired OTP', 400);
     }
 
-    // Find user and update password
-    const user = await User.findOne({ phone }).select('+password');
+    // Find user by email or phone
+    const user = await User.findOne({
+      $or: [
+        { email: identifier },
+        { phone: identifier }
+      ],
+    });
+
     if (!user) {
       return sendError(res, 'User not found', 404);
     }
 
-    user.password = newPassword;
+    // Generate reset token using the identifier
+    const resetToken = await generateResetToken(identifier);
+
+    return sendSuccess(
+      res,
+      {
+        resetToken,
+        message: 'OTP verified successfully. Use this token to reset your password.'
+      },
+      'OTP verified'
+    );
+  } catch (error) {
+    logger.error('Verify reset OTP error:', error);
+    return sendError(res, 'Failed to verify OTP', 500);
+  }
+};
+
+/**
+ * Reset password using reset token
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return sendError(res, 'Reset token and new password are required', 400);
+    }
+
+    // Verify reset token
+    const identifier = await verifyResetToken(token);
+    if (!identifier) {
+      return sendError(res, 'Invalid or expired reset token', 400);
+    }
+
+    // Find user by email or phone
+    const user = await User.findOne({
+      $or: [
+        { email: identifier },
+        { phone: identifier }
+      ],
+    }).select('+password');
+
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    // Hash new password
+    const bcrypt = (await import('bcryptjs')).default;
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
     await user.save();
 
     return sendSuccess(res, null, 'Password reset successfully');

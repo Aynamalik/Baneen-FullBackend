@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const emergencyContactSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: true,
+    // required: true,
   },
   phone: {
     type: String,
@@ -72,6 +72,10 @@ const passengerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    cnicImage: {
+      type: String,
+      required: true,
+    }
   },
   {
     timestamps: true,

@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { USER_ROLES, USER_STATUS } from '../config/constants.js';
+import Joi from 'joi';
+const { alternatives, string, object, number, boolean } = Joi; // destructure what you need
+
 
 const userSchema = new mongoose.Schema(
   {
@@ -15,7 +18,7 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: true,
-      unique: true,
+      // unique: true,
       trim: true,
       index: true,
     },
@@ -28,6 +31,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: Object.values(USER_ROLES),
       required: true,
+      index: true,
+    },
+    alternatePhone:{
+      type: String,
+      unique: true,
+      trim: true,
       index: true,
     },
     cnic: {

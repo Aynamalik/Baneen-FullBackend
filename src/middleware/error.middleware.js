@@ -1,9 +1,6 @@
 import logger from '../utils/logger.js';
 import { sendError } from '../utils/response.js';
 
-/**
- * Global error handling middleware
- */
 export const errorHandler = (err, req, res, next) => {
   logger.error('Error:', {
     message: err.message,
@@ -21,7 +18,7 @@ export const errorHandler = (err, req, res, next) => {
   // Mongoose duplicate key error
   if (err.code === 11000) {
     const field = Object.keys(err.keyPattern)[0];
-    return sendError(res, `${field} already exists`, 409);
+    return sendError(res, `${field} already ex  ts`, 409);
   }
 
   // Mongoose cast error (invalid ObjectId)
@@ -38,7 +35,6 @@ export const errorHandler = (err, req, res, next) => {
     return sendError(res, 'Token expired', 401);
   }
 
-  // Joi validation error
   if (err.isJoi) {
     return sendError(res, 'Validation error', 400, err.details.map((d) => d.message));
   }
@@ -48,7 +44,7 @@ export const errorHandler = (err, req, res, next) => {
     return sendError(res, err.message, err.statusCode, err.errors);
   }
 
-  // Default error
+ 
   const message = process.env.NODE_ENV === 'production' 
     ? 'Internal server error' 
     : err.message;
@@ -56,9 +52,6 @@ export const errorHandler = (err, req, res, next) => {
   return sendError(res, message, 500);
 };
 
-/**
- * 404 Not Found handler
- */
 export const notFoundHandler = (req, res) => {
   sendError(res, `Route ${req.originalUrl} not found`, 404);
 };

@@ -1,0 +1,866 @@
+{
+  "info": {
+    "name": "Baneen Ride-Sharing API",
+    "description": "Complete API collection for Baneen ride-sharing platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register Passenger",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "John Doe",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "john@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+923001234567",
+                  "type": "text"
+                },
+                {
+                  "key": "cnic",
+                  "value": "1234567890123",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "testpassword123",
+                  "type": "text"
+                },
+                {
+                  "key": "cnicImage",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register-passenger",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register-passenger"]
+            }
+          }
+        },
+        {
+          "name": "Register Driver",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Ahmed Khan",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "ahmed@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+923008765432",
+                  "type": "text"
+                },
+                {
+                  "key": "cnic",
+                  "value": "9876543210987",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "driverpass123",
+                  "type": "text"
+                },
+                {
+                  "key": "cnicImage",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "licensePic",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "vehiclePermitPic",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register-driver",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register-driver"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', response.data.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', response.data.refreshToken);",
+                  "    pm.collectionVariables.set('user_id', response.data.user._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{login_phone}}\",\n  \"password\": \"{{login_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ride Management",
+      "item": [
+        {
+          "name": "Get Fare Estimate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/estimate?pickupLat=31.5204&pickupLng=74.3587&dropoffLat=31.4504&dropoffLng=73.1350",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "estimate"],
+              "query": [
+                {
+                  "key": "pickupLat",
+                  "value": "31.5204"
+                },
+                {
+                  "key": "pickupLng",
+                  "value": "74.3587"
+                },
+                {
+                  "key": "dropoffLat",
+                  "value": "31.4504"
+                },
+                {
+                  "key": "dropoffLng",
+                  "value": "73.1350"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Request Ride",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('ride_id', response.data.rideId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickupLocation\": \"Johar Town, Lahore\",\n  \"dropoffLocation\": \"Model Town, Lahore\",\n  \"pickupCoords\": {\n    \"latitude\": 31.5204,\n    \"longitude\": 74.3587\n  },\n  \"dropoffCoords\": {\n    \"latitude\": 31.4504,\n    \"longitude\": 73.1350\n  },\n  \"paymentMethod\": \"cash\",\n  \"rideType\": \"one-time\",\n  \"notes\": \"Please be on time\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/request",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "request"]
+            }
+          }
+        },
+        {
+          "name": "Accept Ride (Driver)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/{{ride_id}}/accept",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "{{ride_id}}", "accept"]
+            }
+          }
+        },
+        {
+          "name": "Start Ride (Driver)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startCoords\": {\n    \"latitude\": 31.5204,\n    \"longitude\": 74.3587\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/{{ride_id}}/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "{{ride_id}}", "start"]
+            }
+          }
+        },
+        {
+          "name": "Update Ride Location (Driver)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 31.4804,\n  \"longitude\": 74.2587,\n  \"speed\": 45,\n  \"heading\": 90\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/{{ride_id}}/location",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "{{ride_id}}", "location"]
+            }
+          }
+        },
+        {
+          "name": "Complete Ride (Driver)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"endCoords\": {\n    \"latitude\": 31.4504,\n    \"longitude\": 73.1350\n  },\n  \"finalDistance\": 1300,\n  \"finalDuration\": 1500\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/{{ride_id}}/complete",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "{{ride_id}}", "complete"]
+            }
+          }
+        },
+        {
+          "name": "Rate Ride",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"review\": \"Great service!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/{{ride_id}}/rate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "{{ride_id}}", "rate"]
+            }
+          }
+        },
+        {
+          "name": "Get Ride Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/{{ride_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "{{ride_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Ride History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/history?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "history"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Active Rides",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "active"]
+            }
+          }
+        },
+        {
+          "name": "Get Ride Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/rides/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "rides", "stats"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Panel",
+      "item": [
+        {
+          "name": "Dashboard Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users?page=1&limit=10&role=passenger",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "role",
+                  "value": "passenger"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Verify User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "Block User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Violation of terms\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/{{user_id}}/block",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "{{user_id}}", "block"]
+            }
+          }
+        },
+        {
+          "name": "Get All Drivers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/drivers?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "drivers"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Pending Drivers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/drivers/pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "drivers", "pending"]
+            }
+          }
+        },
+        {
+          "name": "Approve Driver",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/drivers/{{driver_id}}/approve",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "drivers", "{{driver_id}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Get All Rides",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/rides?page=1&limit=10&status=completed",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "rides"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "completed"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Active Rides",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/rides/active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "rides", "active"]
+            }
+          }
+        },
+        {
+          "name": "Get Ride Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/reports/rides?groupBy=day",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "reports", "rides"],
+              "query": [
+                {
+                  "key": "groupBy",
+                  "value": "day"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Earnings Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/reports/earnings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "reports", "earnings"]
+            }
+          }
+        },
+        {
+          "name": "Get User Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/reports/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "reports", "users"]
+            }
+          }
+        },
+        {
+          "name": "Get Driver Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/reports/drivers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "reports", "drivers"]
+            }
+          }
+        },
+        {
+          "name": "Get Subscription Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/subscriptions/plans?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "subscriptions", "plans"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Subscription Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Premium Monthly\",\n  \"description\": \"Unlimited rides for one month\",\n  \"ridesIncluded\": 100,\n  \"price\": 5000,\n  \"validityDays\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/subscriptions/plans",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "subscriptions", "plans"]
+            }
+          }
+        },
+        {
+          "name": "Get System Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/system/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "system", "stats"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-refresh token if expired",
+          "if (pm.collectionVariables.get('access_token')) {",
+          "    const token = pm.collectionVariables.get('access_token');",
+          "    const payload = JSON.parse(atob(token.split('.')[1]));",
+          "    const now = Math.floor(Date.now() / 1000);",
+          "    ",
+          "    if (payload.exp < now) {",
+          "        console.log('Token expired, refreshing...');",
+          "        // Note: You'd need to implement token refresh logic here",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "login_phone",
+      "value": "+923001234567",
+      "type": "string"
+    },
+    {
+      "key": "login_password",
+      "value": "testpassword123",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driver_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "ride_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

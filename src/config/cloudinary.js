@@ -21,17 +21,11 @@ cloudinary.config({
   api_secret: CLOUDINARY_API_SECRET,
 });
 
-/**
- * Upload image to Cloudinary
- * @param {string} filePath - Local file path
- * @param {Object} options - Upload options
- * @returns {Promise<Object>} - Upload result
- */
 export const uploadImage = async (filePath, options = {}) => {
-  // Check if Cloudinary is configured
+ 
   if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
-    console.warn('⚠️  Cloudinary not configured. Skipping image upload.');
-    // Return mock result for development
+    console.warn(' Cloudinary not configured. Skipping image upload.');
+    
     return {
       public_id: `mock-${Date.now()}`,
       url: `https://via.placeholder.com/400x300?text=CNIC-${Date.now()}`,
@@ -64,11 +58,6 @@ export const uploadImage = async (filePath, options = {}) => {
   }
 };
 
-/**
- * Delete image from Cloudinary
- * @param {string} publicId - Public ID of the image
- * @returns {Promise<Object>} - Delete result
- */
 export const deleteImage = async (publicId) => {
   try {
     const result = await cloudinary.uploader.destroy(publicId);
@@ -78,11 +67,7 @@ export const deleteImage = async (publicId) => {
   }
 };
 
-/**
- * Extract public ID from Cloudinary URL
- * @param {string} url - Cloudinary URL
- * @returns {string} - Public ID
- */
+
 export const extractPublicId = (url) => {
   const matches = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/);
   return matches ? matches[1] : null;

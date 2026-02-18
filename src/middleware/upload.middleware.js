@@ -46,125 +46,127 @@ const upload = multer({
   fileFilter: fileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
-    files: 1, // Only one file at a time
+    files: 4, // Only one file at a time
   }
 });
-
-/**
- * Middleware to handle CNIC image upload
- */
-export const uploadCNICImage = (req, res, next) => {
-  console.log('🔄 Starting CNIC image upload...');
-  console.log('📋 Content-Type:', req.headers['content-type']);
-  console.log('📋 Form fields:', Object.keys(req.body || {}));
-  console.log('📋 Has file in raw body:', !!req.body && typeof req.body === 'object');
-
-  const uploadSingle = upload.single('cnicImage');
-
-  uploadSingle(req, res, (err) => {
-    console.log('📤 Multer processing complete');
-    console.log('❌ Error object:', err);
-    console.log('📁 req.file:', req.file);
-
+export const handleUploads = (fields) => (req, res, next) => {
+  // Use upload.any() to handle all fields
+  const uploadAny = upload.any();
+  uploadAny(req, res, (err) => {
     if (err instanceof multer.MulterError) {
-      console.error('🚨 Multer Error Details:', {
-        code: err.code,
-        field: err.field,
-        message: err.message,
-        stack: err.stack
-      });
-
-      // Multer-specific errors
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        console.log('📏 File too large');
-        return sendError(res, 'CNIC image size must be less than 5MB', 400);
-      }
-      if (err.code === 'LIMIT_FILE_COUNT') {
-        console.log('📊 Too many files');
-        return sendError(res, 'Only one CNIC image can be uploaded at a time', 400);
-      }
-      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-        console.log('🎯 Unexpected file field');
-        return sendError(res, 'File must be uploaded with field name "cnicImage"', 400);
-      }
-      console.log('🔧 Other multer error:', err.code);
-      return sendError(res, `File upload error: ${err.message}`, 400);
+      if (err.code === 'LIMIT_FILE_SIZE') return sendError(res, 'File too large', 400);
+      if (err.code === 'LIMIT_FILE_COUNT') return sendError(res, 'Too many files', 400);
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') return sendError(res, `Unexpected file field: ${err.field}`, 400);
+      return sendError(res, err.message, 400);
     } else if (err) {
-      console.error('🚨 Non-multer error:', err);
-      // Other errors (like file filter errors)
       return sendError(res, err.message, 400);
     }
 
-    // Check if file was uploaded
-    if (!req.file) {
-      console.log('❌ No file uploaded');
-      console.log('📋 Available fields:', req.body);
-      return sendError(res, 'CNIC image is required', 400);
-    }
+    // Separate files and text fields
+    const processedFiles = {};
+    const processedBody = {};
 
-    // Validate image dimensions (basic check)
-    const { size, mimetype, filename, path: filePath } = req.file;
-    console.log('✅ File uploaded successfully:', {
-      filename,
-      size,
-      mimetype,
-      path: filePath
+    // Process all fields from req.body (multer puts everything here with any())
+    Object.keys(req.body).forEach(key => {
+      const values = req.body[key];
+
+      // Trim whitespace from field names to handle accidental spaces
+      const cleanKey = key.trim();
+
+      // If it's an array with one element and looks like text, treat as text field
+      if (Array.isArray(values) && values.length === 1) {
+        processedBody[cleanKey] = values[0];
+      } else if (!Array.isArray(values)) {
+        processedBody[cleanKey] = values;
+      }
     });
 
-    if (size === 0) {
-      console.log('📏 Empty file detected');
-      return sendError(res, 'Uploaded file is empty', 400);
+    // Process files from req.files array
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        if (!processedFiles[file.fieldname]) {
+          processedFiles[file.fieldname] = [];
+        }
+        processedFiles[file.fieldname].push(file);
+      });
     }
 
-    logger.info(`CNIC image uploaded: ${req.file.filename}`);
+    req.body = processedBody;
+    req.files = processedFiles;
+
+    // Validate required files
+    for (let field of fields.map(f => f.name)) {
+      if (!req.files?.[field]?.[0]) return sendError(res, `${field} is required`, 400);
+    }
+
     next();
   });
 };
-
-/**
- * Middleware to clean up temporary uploaded files
- */
+// Cleanup middleware
 export const cleanupTempFiles = (req, res, next) => {
   res.on('finish', () => {
-    if (req.file && req.file.path) {
-      try {
-        fs.unlinkSync(req.file.path);
-        logger.info(`Cleaned up temp file: ${req.file.filename}`);
-      } catch (error) {
-        logger.error(`Failed to cleanup temp file: ${error.message}`);
-      }
+    if (req.files) {
+      Object.values(req.files).forEach(arr =>
+        arr.forEach(file => {
+          try {
+            fs.unlinkSync(file.path);
+            logger.info(`Cleaned up temp file: ${file.filename}`);
+          } catch (err) {
+            logger.error(`Failed to cleanup temp file: ${err.message}`);
+          }
+        })
+      );
     }
   });
   next();
 };
 
-/**
- * Validate CNIC image quality (basic validation)
- */
-export const validateCNICImage = (req, res, next) => {
-  if (!req.file) {
-    return sendError(res, 'CNIC image is required', 400);
+// Validate uploaded files dynamically
+export const validateFiles = requiredFields => (req, res, next) => {
+  for (let field of requiredFields) {
+    const file = req.files?.[field]?.[0];
+    if (!file) return sendError(res, `${field} is required`, 400);
+    if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.mimetype)) {
+      return sendError(res, `${field} must be JPEG or PNG`, 400);
+    }
+    if (file.size < 100) return sendError(res, `${field} is too small`, 400);
   }
-
-  // Add more sophisticated image validation here in the future
-  // For now, just check basic properties
-
-  const { size, mimetype } = req.file;
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-
-  // Temporarily allow any file type for testing
-  if (!allowedTypes.includes(mimetype) && !mimetype) {
-    // For testing, allow any file - in production this would be stricter
-    console.log(`Testing mode: Allowing file with mimetype: ${mimetype}`);
-  } else if (!allowedTypes.includes(mimetype)) {
-    return sendError(res, 'Invalid image format. Only JPEG and PNG are allowed', 400);
-  }
-
-  if (size < 100) { // Reduced minimum size for testing
-    return sendError(res, 'CNIC image file is too small. Please upload a clear image', 400);
-  }
-
   next();
 };
+
+// Specific configuration for driver photos
+const driverPhotoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename for driver photos
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, `driver-photo-${uniqueSuffix}${path.extname(file.originalname)}`);
+  }
+});
+
+// File filter for driver photos
+const driverPhotoFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+
+  if (mimetype && extname) {
+    return cb(null, true);
+  } else {
+    cb(new Error('Only JPEG, JPG, and PNG images are allowed for driver photos'));
+  }
+};
+
+// Multer configuration for driver photos
+export const uploadDriverPhoto = multer({
+  storage: driverPhotoStorage,
+  fileFilter: driverPhotoFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 1, // Only one file
+  }
+}).single('driverPhoto');
 
 export default upload;

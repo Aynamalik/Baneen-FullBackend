@@ -1,10 +1,4 @@
 import Joi from 'joi';
-
-/**
- * Validation schemas using Joi
- */
-
-// User registration validation
 export const registerSchema = Joi.object({
   email: Joi.string().email().required(),
   phone: Joi.string().pattern(/^(\+92|92|0)?[0-9]{10}$/).required(),
@@ -27,22 +21,33 @@ export const loginSchema = Joi.object({
   password: Joi.string().required(),
 }).or('email', 'phone');
 
-// OTP verification validation
+// OTP verification validation - accepts verificationToken (no phone needed) OR phone for backward compatibility
 export const verifyOTPSchema = Joi.object({
-  phone: Joi.string().pattern(/^(\+92|92|0)?[0-9]{10}$/).required(),
+  verificationToken: Joi.string().optional(),
+  phone: Joi.string().pattern(/^(\+92|92|0)?[0-9]{10}$/).optional(),
   otp: Joi.string().length(6).required(),
+}).or('verificationToken', 'phone').messages({
+  'object.missing': 'Either verificationToken or phone is required',
 });
 
 // Password reset request validation
 export const forgotPasswordSchema = Joi.object({
   email: Joi.string().email().optional(),
-  phone: Joi.string().pattern(/^(\+92|92|0)?[0-9]{10}$/).optional(),
+  phone: Joi.string().trim().pattern(/^(\+92|92|0)?[0-9]{10}$/).optional(),
 }).or('email', 'phone');
 
 // Password reset validation
 export const resetPasswordSchema = Joi.object({
   token: Joi.string().required(),
-  password: Joi.string().min(8).required(),
+  newPassword: Joi.string().min(8).required(),
+});
+
+export const verifyResetOtpSchema = Joi.object({
+  identifier: Joi.alternatives().try(
+    Joi.string().email(),
+    Joi.string().pattern(/^(\+92|92|0)?[0-9]{10}$/)
+  ).required(),
+  otp: Joi.string().length(6).required(),
 });
 
 // Profile update validation
@@ -54,17 +59,20 @@ export const updateProfileSchema = Joi.object({
 
 // Ride request validation
 export const rideRequestSchema = Joi.object({
-  pickup: Joi.object({
+  pickupLocation: Joi.string().required(),
+  dropoffLocation: Joi.string().required(),
+  pickupCoords: Joi.object({
     latitude: Joi.number().required(),
     longitude: Joi.number().required(),
-    address: Joi.string().required(),
-  }).required(),
-  destination: Joi.object({
+  }).optional(),
+  dropoffCoords: Joi.object({
     latitude: Joi.number().required(),
     longitude: Joi.number().required(),
-    address: Joi.string().required(),
-  }).required(),
+  }).optional(),
+  paymentMethod: Joi.string().valid('cash', 'easypaisa', 'jazzcash', 'card').required(),
+  vehicleType: Joi.string().valid('car', 'bike', 'auto').required(),
   rideType: Joi.string().valid('one-time', 'subscription').default('one-time'),
+  notes: Joi.string().max(500).optional(),
 });
 
 // Emergency contact validation
@@ -103,6 +111,14 @@ export const sosAlertSchema = Joi.object({
   }).required(),
 });
 
+export const registerPassengerSchema = Joi.object({
+  name: Joi.string().min(2).max(50).required(),
+  email: Joi.string().email().required(),
+  phone: Joi.string().pattern(/^\d{10,15}$/).required(),
+  cnic: Joi.string().pattern(/^\d{13}$/).required(),
+  password: Joi.string().min(8).required(),
+  confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({ 'any.only': 'Password and confirm password must match' }),
+});
 // Complaint validation
 export const complaintSchema = Joi.object({
   rideId: Joi.string().optional(),

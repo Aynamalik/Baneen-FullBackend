@@ -1,6 +1,3 @@
-/**
- * Application constants
- */
 
 export const USER_ROLES = {
   PASSENGER: 'passenger',
@@ -71,9 +68,9 @@ export const NOTIFICATION_TYPES = {
 };
 
 export const DRIVER_AVAILABILITY = {
-  ONLINE: 'online',
-  OFFLINE: 'offline',
+  AVAILABLE: 'available',
   BUSY: 'busy',
+  OFFLINE: 'offline',
 };
 
 export const VEHICLE_TYPES = {

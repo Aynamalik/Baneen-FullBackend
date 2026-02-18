@@ -1,12 +1,4 @@
-/**
- * Helper utility functions
- */
 
-/**
- * Generate random OTP
- * @param {number} length - OTP length
- * @returns {string} - Generated OTP
- */
 export const generateOTP = (length = 6) => {
   const digits = '0123456789';
   let OTP = '';
@@ -15,15 +7,6 @@ export const generateOTP = (length = 6) => {
   }
   return OTP;
 };
-
-/**
- * Calculate distance between two coordinates (Haversine formula)
- * @param {number} lat1 - Latitude of first point
- * @param {number} lon1 - Longitude of first point
- * @param {number} lat2 - Latitude of second point
- * @param {number} lon2 - Longitude of second point
- * @returns {number} - Distance in kilometers
- */
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Radius of the Earth in kilometers
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -38,26 +21,17 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const distance = R * c;
   return distance;
 };
-
 /**
- * Format phone number
- * @param {string} phone - Phone number
- * @returns {string} - Formatted phone number
+ * Format phone to E.164 for Pakistan (+92 + 10 digits). Safe for string or number.
  */
 export const formatPhoneNumber = (phone) => {
-  // Remove all non-digit characters
-  const cleaned = phone.replace(/\D/g, '');
-  
-  // Format for Pakistan (assuming +92 country code)
-  if (cleaned.startsWith('92')) {
-    return `+${cleaned}`;
-  } else if (cleaned.startsWith('0')) {
-    return `+92${cleaned.substring(1)}`;
-  } else if (cleaned.length === 10) {
-    return `+92${cleaned}`;
-  }
-  
-  return `+${cleaned}`;
+  const cleaned = String(phone ?? '').replace(/\D/g, '');
+  // Pakistan: 92 + 10-digit national number (drop leading 0 if present)
+  if (cleaned.startsWith('92') && cleaned.length === 12) return `+${cleaned}`;
+  if (cleaned.startsWith('92') && cleaned.length > 12) return `+${cleaned.slice(0, 12)}`;
+  if (cleaned.startsWith('0') && cleaned.length >= 11) return `+92${cleaned.slice(1, 11)}`;
+  if (cleaned.length >= 10) return `+92${cleaned.slice(-10)}`; // last 10 digits
+  return `+92${cleaned}`;
 };
 
 /**
@@ -72,12 +46,15 @@ export const isValidEmail = (email) => {
 
 /**
  * Validate phone number (Pakistan format)
- * @param {string} phone - Phone number
+ * Accepts: 10 digits (3xxxxxxxxx), 11 with leading 0 (03xxxxxxxxx), or with 92/+92 prefix
+ * @param {string|number} phone - Phone number (string or number; leading 0 may be lost if sent as number in JSON)
  * @returns {boolean} - True if valid
  */
 export const isValidPhone = (phone) => {
+  if (phone == null || phone === '') return false;
+  const cleaned = String(phone).replace(/\D/g, '');
   const phoneRegex = /^(\+92|92|0)?[0-9]{10}$/;
-  return phoneRegex.test(phone.replace(/\D/g, ''));
+  return phoneRegex.test(cleaned);
 };
 
 /**

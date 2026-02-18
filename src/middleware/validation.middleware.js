@@ -1,11 +1,10 @@
-/**
- * Request validation middleware
- * @param {Joi.Schema} schema - Joi validation schema
- * @returns {Function} - Express middleware function
- */
+
 export const validate = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.body, {
+    // For multipart form data, ensure we have the parsed data
+    const dataToValidate = req.body || {};
+
+    const { error, value } = schema.validate(dataToValidate, {
       abortEarly: false,
       stripUnknown: true,
     });
@@ -25,11 +24,7 @@ export const validate = (schema) => {
   };
 };
 
-/**
- * Validate query parameters
- * @param {Joi.Schema} schema - Joi validation schema
- * @returns {Function} - Express middleware function
- */
+
 export const validateQuery = (schema) => {
   return (req, res, next) => {
     const { error, value } = schema.validate(req.query, {
@@ -51,11 +46,6 @@ export const validateQuery = (schema) => {
   };
 };
 
-/**
- * Validate URL parameters
- * @param {Joi.Schema} schema - Joi validation schema
- * @returns {Function} - Express middleware function
- */
 export const validateParams = (schema) => {
   return (req, res, next) => {
     const { error, value } = schema.validate(req.params, {
