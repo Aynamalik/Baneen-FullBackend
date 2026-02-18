@@ -44,7 +44,6 @@ import {
 
 const router = express.Router();
 
-
 router.use(authenticate);
 router.use(requireRole([USER_ROLES.ADMIN]));
 
