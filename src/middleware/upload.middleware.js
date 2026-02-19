@@ -4,7 +4,6 @@ import fs from 'fs';
 import { sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
-// Create uploads directory if it doesn't exist
 const uploadsDir = path.join(process.cwd(), 'uploads', 'temp');
 console.log('📁 Checking uploads directory:', uploadsDir);
 if (!fs.existsSync(uploadsDir)) {
@@ -15,19 +14,17 @@ if (!fs.existsSync(uploadsDir)) {
   console.log('✅ Uploads directory exists');
 }
 
-// Multer storage configuration for temporary storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    // Generate unique filename with timestamp
+    
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, `cnic-${uniqueSuffix}${path.extname(file.originalname)}`);
   }
 });
 
-// File filter for CNIC images
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -40,17 +37,16 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Multer configuration
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-    files: 4, // Only one file at a time
+    fileSize: 5 * 1024 * 1024, 
+    files: 4, 
   }
 });
 export const handleUploads = (fields) => (req, res, next) => {
-  // Use upload.any() to handle all fields
+  
   const uploadAny = upload.any();
   uploadAny(req, res, (err) => {
     if (err instanceof multer.MulterError) {
@@ -61,19 +57,16 @@ export const handleUploads = (fields) => (req, res, next) => {
     } else if (err) {
       return sendError(res, err.message, 400);
     }
-
-    // Separate files and text fields
     const processedFiles = {};
     const processedBody = {};
 
-    // Process all fields from req.body (multer puts everything here with any())
     Object.keys(req.body).forEach(key => {
       const values = req.body[key];
 
-      // Trim whitespace from field names to handle accidental spaces
+   
       const cleanKey = key.trim();
 
-      // If it's an array with one element and looks like text, treat as text field
+      
       if (Array.isArray(values) && values.length === 1) {
         processedBody[cleanKey] = values[0];
       } else if (!Array.isArray(values)) {
@@ -81,7 +74,7 @@ export const handleUploads = (fields) => (req, res, next) => {
       }
     });
 
-    // Process files from req.files array
+    
     if (req.files && req.files.length > 0) {
       req.files.forEach(file => {
         if (!processedFiles[file.fieldname]) {
@@ -121,7 +114,6 @@ export const cleanupTempFiles = (req, res, next) => {
   next();
 };
 
-// Validate uploaded files dynamically
 export const validateFiles = requiredFields => (req, res, next) => {
   for (let field of requiredFields) {
     const file = req.files?.[field]?.[0];
@@ -159,7 +151,6 @@ const driverPhotoFilter = (req, file, cb) => {
   }
 };
 
-// Multer configuration for driver photos
 export const uploadDriverPhoto = multer({
   storage: driverPhotoStorage,
   fileFilter: driverPhotoFilter,

@@ -2,9 +2,6 @@ import voiceService from '../services/voice.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
-/**
- * Process voice input from audio file
- */
 export const processVoice = async (req, res) => {
   try {
     const { language = 'en-US' } = req.body;
@@ -14,13 +11,13 @@ export const processVoice = async (req, res) => {
       return sendError(res, 'Audio file is required', 400);
     }
 
-    // Validate audio file
+  
     voiceService.validateAudio(audioFile.buffer);
 
-    // Process voice input
+  
     const voiceResult = await voiceService.processVoiceInput(audioFile.buffer, language);
 
-    // Execute the voice action
+  
     const userId = req.user.userId;
     const userRole = req.user.role;
     const actionResult = await voiceService.executeVoiceAction(
@@ -44,9 +41,6 @@ export const processVoice = async (req, res) => {
   }
 };
 
-/**
- * Get supported voice commands
- */
 export const getVoiceCommands = async (req, res) => {
   try {
     const { language = 'en-US' } = req.query;
@@ -65,9 +59,7 @@ export const getVoiceCommands = async (req, res) => {
   }
 };
 
-/**
- * Test voice processing with text input (for development)
- */
+
 export const testVoiceWithText = async (req, res) => {
   try {
     const { text, language = 'en-US' } = req.body;
@@ -76,7 +68,7 @@ export const testVoiceWithText = async (req, res) => {
       return sendError(res, 'Text input is required', 400);
     }
 
-    // Create mock voice result from text
+    
     const voiceResult = {
       success: true,
       transcript: text,

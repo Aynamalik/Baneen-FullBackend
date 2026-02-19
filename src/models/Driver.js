@@ -207,7 +207,7 @@ driverSchema.methods.updateAvailability = function (status, location) {
   this.availability.lastUpdated = new Date();
 };
 
-// Method to check if driver is available
+
 driverSchema.methods.isAvailable = function () {
   return (
     this.isApproved &&

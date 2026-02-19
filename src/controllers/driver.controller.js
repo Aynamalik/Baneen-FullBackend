@@ -362,7 +362,6 @@ export const getDriverStats = async (req, res) => {
       return sendError(res, 'Driver profile not found', 404);
     }
 
-    // Get ride statistics
     const [
       totalRides,
       completedRides,
@@ -383,7 +382,6 @@ export const getDriverStats = async (req, res) => {
       }),
     ]);
 
-    // Calculate acceptance rate and other metrics
     const acceptedRides = await Ride.countDocuments({
       driverId,
       status: { $in: ['accepted', 'in-progress', 'completed'] }
@@ -441,7 +439,6 @@ export const getEarningsStats = async (req, res) => {
         dateFilter = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
-    // Get daily earnings for the period
     const earnings = await Ride.aggregate([
       {
         $match: {

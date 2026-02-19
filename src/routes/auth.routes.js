@@ -17,7 +17,7 @@ import { registerPassengerSchema } from '../utils/validators.js';
 import { validateFiles,handleUploads,cleanupTempFiles } from '../middleware/upload.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validation.middleware.js';
-import { injectVerificationTokenFromCookie } from '../middleware/verificationToken.middleware.js';
+import { injectVerificationTokenFromCookie, injectResetIdentifierFromCookie } from '../middleware/verificationToken.middleware.js';
 import {
   registerSchema,
   loginSchema,
@@ -61,7 +61,7 @@ router.post('/verify-otp', injectVerificationTokenFromCookie, validate(verifyOTP
 
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), forgotPassword);
 
-router.post('/verify-reset-otp', validate(verifyResetOtpSchema), verifyResetOtp);
+router.post('/verify-reset-otp', otpLimiter, injectResetIdentifierFromCookie, validate(verifyResetOtpSchema), verifyResetOtp);
 
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
 

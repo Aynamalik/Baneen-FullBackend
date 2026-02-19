@@ -42,9 +42,6 @@ export const uploadCNICImage = async (req, res) => {
   }
 };
 
-/**
- * Get CNIC verification status
- */
 export const getCNICStatus = async (req, res) => {
   try {
     const userId = req.user.userId;

@@ -16,7 +16,7 @@ const adminSchema = new mongoose.Schema(
     },
     permissions: {
       type: [String],
-      default: ['all'], // ['all'] or specific permissions like ['users', 'rides', 'payments']
+      default: ['all'], 
     },
     lastLogin: {
       type: Date,

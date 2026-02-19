@@ -133,7 +133,7 @@ export const completeRide = async (req, res) => {
     const { id: rideId } = req.params;
     const { endCoords, finalDistance, finalDuration } = req.body;
 
-    // Validate driver role
+    
     if (req.user.role !== USER_ROLES.DRIVER) {
       return sendError(res, 'Only drivers can complete rides', 403);
     }

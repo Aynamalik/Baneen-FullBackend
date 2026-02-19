@@ -6,9 +6,6 @@ import {
 import { sendSuccess, sendError, sendPaginated } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
-/**
- * GET /notifications - Get user's notifications
- */
 export const getNotifications = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -39,9 +36,6 @@ export const getNotifications = async (req, res) => {
   }
 };
 
-/**
- * PUT /notifications/:id/read - Mark notification as read
- */
 export const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
@@ -60,9 +54,6 @@ export const markAsRead = async (req, res) => {
   }
 };
 
-/**
- * PUT /notifications/read-all - Mark all notifications as read
- */
 export const markAllAsRead = async (req, res) => {
   try {
     const userId = req.user.userId;

@@ -5,14 +5,13 @@ import logger from '../utils/logger.js';
 
 export const authenticate = async (req, res, next) => {
   try {
-    // Get token from cookie first, then try header as fallback
+   
     let token = req.cookies?.accessToken;
 
-    // Fallback to Authorization header if cookie not found
     if (!token) {
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7); // Remove 'Bearer ' prefix
+        token = authHeader.substring(7); 
       }
     }
 
@@ -30,19 +29,17 @@ export const authenticate = async (req, res, next) => {
       return sendError(res, 'Invalid token', 401);
     }
 
-    // Get user from database
+    
     const user = await User.findById(decoded.userId);
 
     if (!user) {
       return sendError(res, 'User not found', 401);
     }
 
-    // Check if user is active and not blocked
     if (!user.isActive || user.isBlocked) {
       return sendError(res, 'Account is inactive or blocked', 403);
     }
 
-    // Attach user to request
     req.user = {
       userId: user._id.toString(),
       email: user.email,
@@ -63,7 +60,7 @@ export const authenticate = async (req, res, next) => {
 
 export const optionalAuthenticate = async (req, res, next) => {
   try {
-    // Get token from cookie first, then try header as fallback
+  
     let token = req.cookies?.accessToken;
 
     if (!token) {
@@ -88,7 +85,7 @@ export const optionalAuthenticate = async (req, res, next) => {
           };
         }
       } catch (error) {
-        // Ignore token errors for optional auth
+      
       }
     }
 

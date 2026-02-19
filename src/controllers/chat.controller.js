@@ -7,9 +7,6 @@ import {
 import { sendSuccess, sendError, sendPaginated } from '../utils/response.js';
 import logger from '../utils/logger.js';
 
-/**
- * GET /chat/rides/:rideId/messages - Get chat messages for a ride
- */
 export const getRideMessages = async (req, res) => {
   try {
     const { rideId } = req.params;
@@ -38,9 +35,6 @@ export const getRideMessages = async (req, res) => {
   }
 };
 
-/**
- * POST /chat/rides/:rideId/messages - Send a chat message
- */
 export const sendMessage = async (req, res) => {
   try {
     const { rideId } = req.params;
@@ -84,9 +78,6 @@ export const sendMessage = async (req, res) => {
   }
 };
 
-/**
- * PUT /chat/messages/:id/read - Mark message as read
- */
 export const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;

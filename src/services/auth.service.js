@@ -104,8 +104,7 @@ export const registerDriverService = async (userData, files) => {
       vehicleName: vehicleName,
       owner: owner
     }
-    // Note: vehiclePermitPic is not stored as Driver model doesn't have this field
-    // If needed, consider adding it to the schema or storing elsewhere
+   
   });
 
   // 4️⃣ Generate tokens
@@ -180,23 +179,20 @@ export const loginUser = async (credentials) => {
     throw new Error('Invalid credentials');
   }
 
-  // Check if user is blocked
   if (user.isBlocked) { 
     throw new Error('Account is blocked. Please contact support.');
   }
 
-  // Check if user is active
+ 
   if (!user.isActive) {
     throw new Error('Account is inactive. Please contact support.');
   }
 
-  // Verify password
   const isPasswordValid = await user.comparePassword(password);
   if (!isPasswordValid) {
     throw new Error('Invalid credentials');
   }
 
-  // Update last login
   user.lastLogin = new Date();
   await user.save();
 
@@ -240,7 +236,7 @@ export const loginUser = async (credentials) => {
 
 export const generateOTPForPhone = async (phone) => {
   const otp = generateOTP(6);
-  logger.info(`OTP for ${phone}: ${otp}`); // Remove in production
+  logger.info(`OTP for ${phone}: ${otp}`); 
   return otp;
 };
 
@@ -253,7 +249,6 @@ export const refreshAccessToken = async (refreshToken) => {
       throw new Error('Invalid refresh token');
     }
 
-    // Generate new access token
     const tokenPayload = {
       userId: user._id.toString(),
       role: user.role,

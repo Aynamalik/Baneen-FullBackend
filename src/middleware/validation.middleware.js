@@ -1,7 +1,7 @@
 
 export const validate = (schema) => {
   return (req, res, next) => {
-    // For multipart form data, ensure we have the parsed data
+  
     const dataToValidate = req.body || {};
 
     const { error, value } = schema.validate(dataToValidate, {
@@ -18,7 +18,6 @@ export const validate = (schema) => {
       });
     }
 
-    // Replace req.body with validated and sanitized value
     req.body = value;
     next();
   };

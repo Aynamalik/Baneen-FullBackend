@@ -44,7 +44,6 @@ export const subscribe = async (req, res) => {
       });
     }
 
-    // Validate payment method
     if (!['easypaisa', 'jazzcash', 'card'].includes(paymentMethod)) {
       return res.status(400).json({
         success: false,
@@ -114,7 +113,6 @@ export const createPlan = async (req, res) => {
     const adminId = req.user.userId;
     const planData = req.body;
 
-    // Validate required fields
     const requiredFields = ['name', 'description', 'ridesIncluded', 'price', 'validityDays'];
     for (const field of requiredFields) {
       if (!planData[field]) {
@@ -181,9 +179,6 @@ export const updatePlan = async (req, res) => {
   }
 };
 
-/**
- * Delete subscription plan (Admin only)
- */
 export const deletePlan = async (req, res) => {
   try {
     const { id: planId } = req.params;
@@ -206,7 +201,7 @@ export const deletePlan = async (req, res) => {
 
 export const getAllPlansAdmin = async (req, res) => {
   try {
-    // Get all plans including inactive ones
+    
     const plans = await getActiveSubscriptionPlans();
 
     res.json({
