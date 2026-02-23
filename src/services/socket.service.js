@@ -8,8 +8,8 @@ import { USER_ROLES } from '../config/constants.js';
 class SocketService {
   constructor() {
     this.io = null;
-    this.connectedUsers = new Map(); // userId -> socketId
-    this.activeRides = new Map(); // rideId -> { passengerSocket, driverSocket }
+    this.connectedUsers = new Map(); 
+    this.activeRides = new Map(); 
   }
 
   initialize(server) {

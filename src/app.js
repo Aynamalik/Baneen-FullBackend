@@ -6,7 +6,6 @@ import dotenv from 'dotenv';
 import { errorHandler } from './middleware/error.middleware.js';
 import logger from './utils/logger.js';
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
@@ -36,7 +35,7 @@ if (process.env.NODE_ENV === 'development') {
   }));
 }
 
-// Health check endpoint
+
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,

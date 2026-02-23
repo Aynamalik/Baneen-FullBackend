@@ -186,7 +186,7 @@ class VoiceRecognitionService {
         EMERGENCY: async () => {
           return {
             action: 'EXECUTE_API',
-            endpoint: '/sos/alert',
+            endpoint: '/rides/sos/alert',
             method: 'POST',
             data: { source: 'voice_command' }
           };

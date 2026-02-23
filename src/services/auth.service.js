@@ -10,7 +10,7 @@ import logger from '../utils/logger.js';
 import axios from 'axios';
 import { DRIVER_AVAILABILITY } from '../config/constants.js';
 
-// Load environment variablesxzad
+// Load environment variables
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;

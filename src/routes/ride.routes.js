@@ -1,5 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { validate } from '../middleware/validation.middleware.js';
+import { sosAlertSchema } from '../utils/validators.js';
 import { requireRole } from '../middleware/role.middleware.js';
 import { USER_ROLES } from '../config/constants.js';
 import { uploadDriverPhoto } from '../middleware/upload.middleware.js';
@@ -17,6 +19,7 @@ import {
   updateDriverAvailability,
   getActiveRides,
   getRideStats,
+  triggerSOSAlert,
 } from '../controllers/ride.controller.js';
 
 const router = express.Router();
@@ -24,6 +27,8 @@ const router = express.Router();
 router.get('/estimate', getFareEstimate);
 
 router.use(authenticate);
+
+router.post('/sos/alert', requireRole([USER_ROLES.PASSENGER, USER_ROLES.DRIVER]), validate(sosAlertSchema), triggerSOSAlert);
 
 router.post('/request', requireRole([USER_ROLES.PASSENGER]), requestRide);
 

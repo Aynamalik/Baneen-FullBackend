@@ -11,11 +11,30 @@ import {
   getFareEstimateService,
   updateDriverAvailabilityService
 } from '../services/ride.service.js';
+import { triggerSOSAlertService } from '../services/sos.service.js';
 import { geocodeAddress } from '../services/maps.service.js';
 import { USER_ROLES } from '../config/constants.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import cancellationService from '../services/cancellation.service.js';
 import logger from '../utils/logger.js';
+
+export const triggerSOSAlert = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+
+    if (userRole !== USER_ROLES.PASSENGER && userRole !== USER_ROLES.DRIVER) {
+      return sendError(res, 'Only passengers and drivers can trigger SOS alerts', 403);
+    }
+
+    const result = await triggerSOSAlertService(userId, userRole, req.body);
+
+    return sendSuccess(res, result, 'SOS alert triggered. Help has been notified.', 201);
+  } catch (error) {
+    logger.error('SOS alert error:', error);
+    return sendError(res, error.message || 'Failed to trigger SOS alert', 400);
+  }
+};
 
 export const requestRide = async (req, res) => {
   try {

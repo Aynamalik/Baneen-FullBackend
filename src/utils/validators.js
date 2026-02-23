@@ -103,12 +103,15 @@ export const paymentSchema = Joi.object({
 
 // SOS alert validation
 export const sosAlertSchema = Joi.object({
-  rideId: Joi.string().required(),
+  rideId: Joi.string().optional(),
   location: Joi.object({
     latitude: Joi.number().required(),
     longitude: Joi.number().required(),
     address: Joi.string().optional(),
   }).required(),
+  description: Joi.string().max(500).optional(),
+  severity: Joi.string().valid('low', 'medium', 'high', 'critical').optional(),
+  source: Joi.string().optional(),
 });
 
 export const registerPassengerSchema = Joi.object({
