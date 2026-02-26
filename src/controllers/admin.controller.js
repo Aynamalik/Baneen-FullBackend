@@ -12,9 +12,6 @@ import SystemSettings from '../models/SystemSettings.js';
 import AiInteraction from '../models/ChatbotAndVoiceLogs.js';
 import logger from '../utils/logger.js';
 
-/**
- * ADMIN DASHBOARD - Get system overview and statistics
- */
 export const getDashboardStats = async (req, res) => {
   try {
     // Get current date for filtering
