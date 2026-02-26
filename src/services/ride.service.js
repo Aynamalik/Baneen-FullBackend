@@ -41,6 +41,13 @@ export const calculateFare = (distanceKm, durationMinutes = 0, surgeMultiplier =
     currency: 'PKR'
   };
 };
+// Scheduled ride constraints
+const SCHEDULED_RIDE_CONFIG = {
+  MIN_ADVANCE_MINUTES: 30,
+  MAX_ADVANCE_DAYS: 7,
+  ACTIVATION_BUFFER_MINUTES: 15, // Start matching drivers 15 min before scheduled time
+};
+
 export const requestRideService = async (passengerId, rideData) => {
   const {
     pickupLocation,
@@ -50,7 +57,8 @@ export const requestRideService = async (passengerId, rideData) => {
     paymentMethod,
     vehicleType,
     rideType = 'one-time',
-    notes
+    notes,
+    scheduledAt: scheduledAtInput
   } = rideData;
 
   // Validate required fields
@@ -69,6 +77,22 @@ export const requestRideService = async (passengerId, rideData) => {
   const validVehicleTypes = ['car', 'bike', 'auto'];
   if (!validVehicleTypes.includes(vehicleType)) {
     throw new Error('Invalid vehicle type. Must be one of: car, bike, auto');
+  }
+
+  // Validate scheduled ride time if provided
+  let scheduledAt = null;
+  if (scheduledAtInput) {
+    scheduledAt = new Date(scheduledAtInput);
+    const now = new Date();
+    const minTime = new Date(now.getTime() + SCHEDULED_RIDE_CONFIG.MIN_ADVANCE_MINUTES * 60 * 1000);
+    const maxTime = new Date(now.getTime() + SCHEDULED_RIDE_CONFIG.MAX_ADVANCE_DAYS * 24 * 60 * 60 * 1000);
+
+    if (scheduledAt < minTime) {
+      throw new Error(`Scheduled ride must be at least ${SCHEDULED_RIDE_CONFIG.MIN_ADVANCE_MINUTES} minutes from now`);
+    }
+    if (scheduledAt > maxTime) {
+      throw new Error(`Scheduled ride cannot be more than ${SCHEDULED_RIDE_CONFIG.MAX_ADVANCE_DAYS} days in advance`);
+    }
   }
 
   // Geocode addresses if coordinates are not provided
@@ -152,79 +176,71 @@ export const requestRideService = async (passengerId, rideData) => {
   // 3️⃣ Calculate fare
   const fareBreakdown = calculateFare(distanceKm, durationMinutes);
 
-  // 4️⃣ Check for existing active rides for this passenger
-  // Allow multiple pending rides but prevent overlapping active rides
-  const existingActiveRide = await Ride.findOne({
-    passengerId: passenger._id,
-    status: { $in: ['accepted', 'in-progress'] }
-  });
+  // 4️⃣ Check for existing active rides for this passenger (skip for scheduled rides)
+  if (!scheduledAt) {
+    const existingActiveRide = await Ride.findOne({
+      passengerId: passenger._id,
+      status: { $in: ['accepted', 'in-progress'] }
+    });
 
-  if (existingActiveRide) {
-    throw new Error('You already have an active ride in progress. Complete or cancel your current ride before requesting a new one.');
+    if (existingActiveRide) {
+      throw new Error('You already have an active ride in progress. Complete or cancel your current ride before requesting a new one.');
+    }
   }
 
-  // 5️⃣ Find nearby available drivers (within 5km radius)
-  // Find available drivers with approved status, matching vehicle type, and populate userId with match condition
-  let availableDrivers = await Driver.find({
-    'availability.status': DRIVER_AVAILABILITY.AVAILABLE,
-    isApproved: true,
-    'vehicle.vehicleType': vehicleType
-  }).populate({
-    path: 'userId',
-    select: 'name phone',
-    match: { isActive: true, isBlocked: false }
-  }).populate({
-    path: 'vehicle',
-    select: 'vehicleType model color registrationNumber'
-  });
-
-  // Filter out drivers where userId is null (user doesn't match the populate condition)
-  availableDrivers = availableDrivers.filter(driver => driver.userId !== null);
-
-  if (!availableDrivers.length) {
-    throw new Error('No drivers available at the moment. Please try again later.');
-  }
-
-  // Calculate driver distances and ETAs for nearest driver
+  // 5️⃣ Find nearby available drivers (within 5km radius) - skip for scheduled rides
+  let availableDrivers = [];
   let nearestDriver = null;
   let driverETA = null;
   let driverETAText = null;
 
-  if (availableDrivers.length > 0) {
-    // Calculate distance for each driver and find nearest
-    const driversWithDistance = availableDrivers.map(driver => {
-      if (driver.availability?.currentLocation?.latitude && driver.availability?.currentLocation?.longitude) {
-        const driverDistance = calculateHaversineDistance(
-          finalPickupCoords.latitude,
-          finalPickupCoords.longitude,
-          driver.availability.currentLocation.latitude,
-          driver.availability.currentLocation.longitude
-        );
-        const eta = estimateTravelTime(driverDistance.distanceKm, 30); // 30 km/h average speed
-        
-        return {
-          driver,
-          distance: driverDistance.distanceKm,
-          eta: eta.duration,
-          etaText: eta.durationText
-        };
-      }
-      return {
-        driver,
-        distance: null,
-        eta: null,
-        etaText: null
-      };
-    }).filter(d => d.distance !== null);
+  if (!scheduledAt) {
+    const drivers = await Driver.find({
+      'availability.status': DRIVER_AVAILABILITY.AVAILABLE,
+      isApproved: true,
+      'vehicle.vehicleType': vehicleType
+    }).populate({
+      path: 'userId',
+      select: 'name phone',
+      match: { isActive: true, isBlocked: false }
+    }).populate({
+      path: 'vehicle',
+      select: 'vehicleType model color registrationNumber'
+    });
 
-    if (driversWithDistance.length > 0) {
-      // Find nearest driver
-      nearestDriver = driversWithDistance.reduce((nearest, current) => 
-        current.distance < nearest.distance ? current : nearest
-      );
-      
-      driverETA = nearestDriver.eta;
-      driverETAText = nearestDriver.etaText;
+    availableDrivers = drivers.filter(driver => driver.userId !== null);
+
+    if (!availableDrivers.length) {
+      throw new Error('No drivers available at the moment. Please try again later.');
+    }
+
+    if (availableDrivers.length > 0) {
+      const driversWithDistance = availableDrivers.map(driver => {
+        if (driver.availability?.currentLocation?.latitude && driver.availability?.currentLocation?.longitude) {
+          const driverDistance = calculateHaversineDistance(
+            finalPickupCoords.latitude,
+            finalPickupCoords.longitude,
+            driver.availability.currentLocation.latitude,
+            driver.availability.currentLocation.longitude
+          );
+          const eta = estimateTravelTime(driverDistance.distanceKm, 30);
+          return {
+            driver,
+            distance: driverDistance.distanceKm,
+            eta: eta.duration,
+            etaText: eta.durationText
+          };
+        }
+        return { driver, distance: null, eta: null, etaText: null };
+      }).filter(d => d.distance !== null);
+
+      if (driversWithDistance.length > 0) {
+        nearestDriver = driversWithDistance.reduce((nearest, current) =>
+          current.distance < nearest.distance ? current : nearest
+        );
+        driverETA = nearestDriver.eta;
+        driverETAText = nearestDriver.etaText;
+      }
     }
   }
 
@@ -233,6 +249,9 @@ export const requestRideService = async (passengerId, rideData) => {
     passengerId: passenger._id,
     vehicleType,
     rideType,
+    status: scheduledAt ? 'scheduled' : 'pending',
+    isScheduled: !!scheduledAt,
+    scheduledAt: scheduledAt || undefined,
     pickup: {
       location: {
         latitude: finalPickupCoords.latitude,
@@ -264,11 +283,11 @@ export const requestRideService = async (passengerId, rideData) => {
     priority: 'normal'
   });
 
-  logger.info(`Ride requested: ${ride._id} by passenger ${passengerId}`);
+  logger.info(`Ride requested: ${ride._id} by passenger ${passengerId}${scheduledAt ? ` (scheduled for ${scheduledAt.toISOString()})` : ''}`);
 
-  // 7️⃣ Notify nearby drivers via socket
+  // 7️⃣ Notify nearby drivers via socket (skip for scheduled rides - drivers notified when ride activates)
+  if (!scheduledAt) {
   try {
-    // Notify all available drivers about the new ride request
     for (const driver of availableDrivers) {
       // Calculate driver-specific distance and ETA
       let driverDistance = null;
@@ -325,14 +344,15 @@ export const requestRideService = async (passengerId, rideData) => {
     logger.info(`Notified ${availableDrivers.length} nearby drivers about ride ${ride._id}`);
   } catch (socketError) {
     logger.error('Socket notification failed for ride request:', socketError);
-    // Don't fail the ride request if socket fails
+  }
   }
 
-  // Calculate estimated arrival time
+  // Calculate estimated arrival time (for immediate rides: now + duration; for scheduled: scheduledAt + duration)
   const now = new Date();
-  const estimatedArrivalTime = new Date(now.getTime() + routeData.duration * 1000);
+  const baseTime = scheduledAt ? scheduledAt : now;
+  const estimatedArrivalTime = new Date(baseTime.getTime() + routeData.duration * 1000);
 
-  // Get nearby drivers count and locations for map display
+  // Get nearby drivers count and locations for map display (only for immediate rides)
   const nearbyDriversInfo = availableDrivers.map(driver => {
     let distanceFromPickup = null;
     let etaToPickup = null;
@@ -399,8 +419,14 @@ export const requestRideService = async (passengerId, rideData) => {
       eta: Math.ceil(nearestDriver.eta / 60) // in minutes
     } : null,
     status: ride.status,
-    driversNotified: availableDrivers.length,
-    message: `Ride requested successfully. Notified ${availableDrivers.length} nearby drivers.`
+    driversNotified: scheduledAt ? 0 : availableDrivers.length,
+    message: scheduledAt
+      ? `Ride scheduled successfully for ${scheduledAt.toLocaleString()}. Drivers will be notified 15 minutes before pickup time.`
+      : `Ride requested successfully. Notified ${availableDrivers.length} nearby drivers.`,
+    ...(scheduledAt && {
+      scheduledAt: scheduledAt.toISOString(),
+      scheduledAtFormatted: scheduledAt.toLocaleString(),
+    }),
   };
 };
 export const acceptRideService = async (driverId, rideId) => {
@@ -835,25 +861,29 @@ export const cancelRideService = async (userId, userRole, rideId, cancellationDa
     throw new Error('Unauthorized to cancel this ride');
   }
 
-  // Check if ride can be cancelled
-  if (!['pending', 'accepted'].includes(ride.status)) {
+  // Ride may already be cancelled by processCancellation (called from controller)
+  const alreadyCancelled = ride.status === 'cancelled';
+  if (!alreadyCancelled && !['scheduled', 'pending', 'accepted'].includes(ride.status)) {
     throw new Error('Ride cannot be cancelled at this stage');
   }
 
-  // Apply cancellation fee if applicable
+  // Apply cancellation fee if applicable (no fee for scheduled/pending - driver not yet assigned)
   let cancellationFee = 0;
   if (ride.status === 'accepted') {
     cancellationFee = FARE_CONFIG.CANCELLATION_FEE;
   }
 
-  // Update ride
-  ride.status = 'cancelled';
-  ride.cancelledBy = cancelledBy;
-  ride.cancellationReason = reason;
-  ride.cancellationFee = cancellationFee;
-  ride.cancelledAt = new Date();
+  // Update ride (only if not already cancelled by processCancellation)
+  if (!alreadyCancelled) {
+    ride.status = 'cancelled';
+    ride.cancelledBy = cancelledBy;
+    ride.cancellationReason = reason;
+    ride.cancellationFee = cancellationFee;
+    ride.cancelledAt = new Date();
+    await ride.save();
+  }
 
-  await ride.save();
+  const effectiveCancelledBy = ride.cancelledBy || cancelledBy;
 
   // Update driver availability if assigned
   if (ride.driverId) {
@@ -863,45 +893,37 @@ export const cancelRideService = async (userId, userRole, rideId, cancellationDa
     });
   }
 
-  logger.info(`Ride ${rideId} cancelled by ${cancelledBy}: ${reason}`);
+  logger.info(`Ride ${rideId} cancelled by ${effectiveCancelledBy}: ${ride.cancellationReason || reason}`);
 
   // Notify the other party and nearby drivers if ride was cancelled before acceptance
   try {
     if (ride.status === 'cancelled' && !ride.driverId) {
-      // If ride was cancelled before driver acceptance, notify all nearby drivers
-      // that this ride request is no longer available
       socketService.broadcast('ride:cancelled_unassigned', {
         rideId: ride._id,
-        cancelledBy,
-        reason,
+        cancelledBy: effectiveCancelledBy,
+        reason: ride.cancellationReason || reason,
         message: 'Ride request cancelled before driver assignment'
       });
     } else if (ride.driverId) {
-      // If ride had an assigned driver, notify that specific driver
       socketService.notifyUser(ride.driverId.userId.toString(), 'ride:cancelled', {
         rideId: ride._id,
-        cancelledBy,
-        reason,
-        cancellationFee,
-        message: `Ride cancelled by ${cancelledBy}`
+        cancelledBy: effectiveCancelledBy,
+        reason: ride.cancellationReason || reason,
+        cancellationFee: ride.cancellationFee ?? cancellationFee,
+        message: `Ride cancelled by ${effectiveCancelledBy}`
       });
     }
 
-    // Always notify the passenger
-    const passengerUserId = cancelledBy === 'passenger' ?
-      ride.passengerId.userId.toString() :
-      ride.passengerId.userId.toString();
-
-    if (cancelledBy !== 'passenger') {
+    const passengerUserId = ride.passengerId.userId.toString();
+    if (effectiveCancelledBy !== 'passenger') {
       socketService.notifyUser(passengerUserId, 'ride:cancelled', {
         rideId: ride._id,
-        cancelledBy,
-        reason,
-        cancellationFee,
-        message: `Ride cancelled by ${cancelledBy}`
+        cancelledBy: effectiveCancelledBy,
+        reason: ride.cancellationReason || reason,
+        cancellationFee: ride.cancellationFee ?? cancellationFee,
+        message: `Ride cancelled by ${effectiveCancelledBy}`
       });
     }
-
   } catch (socketError) {
     logger.error('Socket notification failed for ride cancellation:', socketError);
     // Don't fail the cancellation if socket fails
@@ -910,8 +932,8 @@ export const cancelRideService = async (userId, userRole, rideId, cancellationDa
   return {
     rideId: ride._id,
     status: ride.status,
-    cancelledBy,
-    cancellationFee,
+    cancelledBy: effectiveCancelledBy,
+    cancellationFee: ride.cancellationFee ?? cancellationFee,
     message: 'Ride cancelled successfully'
   };
 };
@@ -1056,6 +1078,27 @@ export const getRideHistoryService = async (userId, userRole, filters = {}) => {
       pages: Math.ceil(total / limit)
     }
   };
+};
+
+/**
+ * Get passenger's scheduled rides (upcoming)
+ */
+export const getScheduledRidesService = async (userId) => {
+  const passenger = await Passenger.findOne({ userId });
+  if (!passenger) {
+    throw new Error('Passenger profile not found');
+  }
+
+  const rides = await Ride.find({
+    passengerId: passenger._id,
+    status: 'scheduled',
+    isScheduled: true,
+    scheduledAt: { $gte: new Date() }
+  })
+    .populate('passengerId', 'name rating')
+    .sort({ scheduledAt: 1 });
+
+  return rides;
 };
 
 /**

@@ -67,6 +67,28 @@ export const generateAndStoreOTP = async (phone) => {
   return otp;
 };
 
+/**
+ * Overwrites the stored OTP for a phone (e.g. when Twilio fails for unverified numbers).
+ * Use bypass OTP "123456" so user can still verify during testing.
+ */
+export const overwriteStoredOtp = async (phone, otp) => {
+  if (useRedis()) {
+    const key = PREFIX.otp + phone;
+    const stored = await redisGet(key);
+    if (!stored) return false;
+    await redisSet(key, { ...stored, otp, attempts: 0 }, OTP_EXPIRY_SEC);
+    await redisSet(key + ':attempts', '0', OTP_EXPIRY_SEC);
+    logger.info(`OTP overwritten for ${phone} (bypass): ${otp}`);
+    return true;
+  }
+  const stored = otpStore.get(phone);
+  if (!stored) return false;
+  stored.otp = otp;
+  stored.attempts = 0;
+  logger.info(`OTP overwritten for ${phone} (bypass): ${otp}`);
+  return true;
+};
+
 export const verifyOTP = async (phone, otp) => {
   if (useRedis()) {
     const key = PREFIX.otp + phone;

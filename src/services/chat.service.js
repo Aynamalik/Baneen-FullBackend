@@ -54,9 +54,6 @@ export const sendMessage = async (rideId, senderId, receiverId, message, type = 
   ]);
 };
 
-/**
- * Get messages for a ride (paginated)
- */
 export const getRideMessages = async (rideId, userId, page = 1, limit = 50) => {
   const isParticipant = await isRideParticipant(rideId, userId);
   if (!isParticipant) {

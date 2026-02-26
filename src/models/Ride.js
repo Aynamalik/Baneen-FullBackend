@@ -7,9 +7,13 @@ const rideSchema = new mongoose.Schema({
   vehicleType: { type: String, enum: ['car', 'bike', 'auto'], required: true },
   status: {
     type: String,
-    enum: ['pending', 'accepted', 'in-progress', 'completed', 'cancelled'],
+    enum: ['scheduled', 'pending', 'accepted', 'in-progress', 'completed', 'cancelled'],
     default: 'pending'
   },
+
+  // Scheduled Ride - when set, ride is booked for future pickup
+  scheduledAt: { type: Date },
+  isScheduled: { type: Boolean, default: false },
 
   // Location Data
   pickup: {
@@ -154,6 +158,7 @@ const rideSchema = new mongoose.Schema({
 rideSchema.index({ passengerId: 1, status: 1 });
 rideSchema.index({ driverId: 1, status: 1 });
 rideSchema.index({ status: 1, createdAt: -1 });
+rideSchema.index({ status: 'scheduled', scheduledAt: 1 });
 rideSchema.index({ 'pickup.location': '2dsphere' });
 rideSchema.index({ 'destination.location': '2dsphere' });
 rideSchema.index({ 'tracking.currentLocation': '2dsphere' });

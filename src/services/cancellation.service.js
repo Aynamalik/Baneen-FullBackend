@@ -48,6 +48,15 @@ class CancellationService {
         throw new Error('Ride not found');
       }
 
+      // No cancellation fee for scheduled rides (no driver assigned yet)
+      if (ride.status === 'scheduled') {
+        return {
+          fee: 0,
+          breakdown: { baseFee: 0, surgeMultiplier: 1, discounts: { total: 0 }, timeElapsedMinutes: 0, feeCategory: 'scheduled', cancelledBy },
+          policy: this.getCancellationPolicy(cancelledBy)
+        };
+      }
+
       const rideCreatedAt = ride.createdAt;
       const timeElapsedMinutes = (cancellationTime - rideCreatedAt) / (1000 * 60);
 
@@ -223,9 +232,14 @@ class CancellationService {
         return { allowed: false, reason: 'Ride already cancelled' };
       }
 
-      // Check cancellation time limits
+      // Scheduled rides: passenger can cancel anytime before pickup (no driver assigned yet)
+      if (ride.status === 'scheduled' && cancelledBy === 'passenger') {
+        return { allowed: true };
+      }
+
+      // Check cancellation time limits for immediate rides
       if (cancelledBy === 'passenger') {
-        // Passengers can cancel up to 10 minutes after booking
+        // Passengers can cancel up to 10 minutes after booking (immediate rides only)
         const timeSinceBooking = (cancellationTime - ride.createdAt) / (1000 * 60);
         if (timeSinceBooking > 10) {
           return { allowed: false, reason: 'Cancellation time limit exceeded (10 minutes)' };

@@ -9,7 +9,8 @@ import {
   getRideDetailsService,
   getRideHistoryService,
   getFareEstimateService,
-  updateDriverAvailabilityService
+  updateDriverAvailabilityService,
+  getScheduledRidesService
 } from '../services/ride.service.js';
 import { triggerSOSAlertService } from '../services/sos.service.js';
 import { geocodeAddress } from '../services/maps.service.js';
@@ -284,6 +285,23 @@ export const getRideHistory = async (req, res) => {
       success: false,
       message: 'Failed to fetch ride history'
     });
+  }
+};
+
+export const getScheduledRides = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    if (req.user.role !== USER_ROLES.PASSENGER) {
+      return sendError(res, 'Only passengers can view scheduled rides', 403);
+    }
+
+    const rides = await getScheduledRidesService(userId);
+
+    return sendSuccess(res, rides, 'Scheduled rides retrieved successfully');
+  } catch (error) {
+    logger.error('Get scheduled rides error:', error);
+    return sendError(res, error.message || 'Failed to fetch scheduled rides', 400);
   }
 };
 

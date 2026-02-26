@@ -21,13 +21,9 @@ export const loginSchema = Joi.object({
   password: Joi.string().required(),
 }).or('email', 'phone');
 
-// OTP verification validation - accepts verificationToken (no phone needed) OR phone for backward compatibility
+// OTP verification - only OTP required; session identified via verificationToken cookie (set during registration)
 export const verifyOTPSchema = Joi.object({
-  verificationToken: Joi.string().optional(),
-  phone: Joi.string().pattern(/^(\+92|92|0)?[0-9]{10}$/).optional(),
   otp: Joi.string().length(6).required(),
-}).or('verificationToken', 'phone').messages({
-  'object.missing': 'Either verificationToken or phone is required',
 });
 
 // Password reset request validation
@@ -73,6 +69,8 @@ export const rideRequestSchema = Joi.object({
   vehicleType: Joi.string().valid('car', 'bike', 'auto').required(),
   rideType: Joi.string().valid('one-time', 'subscription').default('one-time'),
   notes: Joi.string().max(500).optional(),
+  // Scheduled ride - ISO 8601 datetime, must be at least 30 min from now, max 7 days ahead
+  scheduledAt: Joi.date().iso().min('now').optional(),
 });
 
 // Emergency contact validation

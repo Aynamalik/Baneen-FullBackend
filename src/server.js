@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { createServer } from 'net';
 import { createServer as createHttpServer } from 'http';
 import socketService from './services/socket.service.js';
+import { startScheduledRideJob } from './jobs/scheduledRide.job.js';
 
 // Load environment variables
 dotenv.config();
@@ -54,6 +55,9 @@ connectDatabase()
       logger.info(`Server running in ${NODE_ENV} mode on port ${availablePort}`);
       logger.info(`API available at http://localhost:${availablePort}/api/v1`);
       logger.info(`Socket.io ready for real-time connections`);
+
+      // Start scheduled ride activation job
+      startScheduledRideJob();
     });
   })
   .catch((error) => {

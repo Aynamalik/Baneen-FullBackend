@@ -8,7 +8,7 @@ import {
 } from '../services/auth.service.js';
 import { uploadImage } from '../config/cloudinary.js';
 import { verifyOtpCode } from "../utils/otp.js";
-import { generateAndStoreOTP, verifyOTP as verifyOTPService, generateResetToken, verifyResetToken, storeRegistrationData, getRegistrationData, removeRegistrationData, generateVerificationToken, getPhoneFromVerificationToken, removeVerificationToken } from '../services/otp.service.js';
+import { generateAndStoreOTP, verifyOTP as verifyOTPService, overwriteStoredOtp, generateResetToken, verifyResetToken, storeRegistrationData, getRegistrationData, removeRegistrationData, generateVerificationToken, getPhoneFromVerificationToken, removeVerificationToken } from '../services/otp.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { formatPhoneNumber, isValidPhone } from '../utils/helpers.js';
 import User from '../models/User.js';
@@ -97,8 +97,8 @@ export const registerDriver = async (req,res) =>{
         await sendSMS(formattedPhone, `Your Baneen driver registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
       } catch (smsError) {
         if (process.env.NODE_ENV === 'development') {
-          logger.warn(`SMS failed in development (e.g. Twilio trial). Use this OTP to verify: ${otp}`);
-         
+          logger.warn(`SMS failed (unverified number). Use OTP 123456 to verify.`);
+          await overwriteStoredOtp(phoneForOTP, '123456');
         } else {
           throw smsError;
         }
@@ -131,21 +131,18 @@ export const registerDriver = async (req,res) =>{
 };
 export const verifyDriverOTP = async (req, res) => {
   try {
-    const { verificationToken: bodyToken, phone, otp } = req.body;
+    const { verificationToken: bodyToken, otp } = req.body || {};
     const verificationToken = bodyToken || req.cookies?.verificationToken;
 
     if (!otp) return sendError(res, 'OTP is required', 400);
 
-    let resolvedPhone;
-    if (verificationToken) {
-      resolvedPhone = await getPhoneFromVerificationToken(verificationToken);
-      if (!resolvedPhone) return sendError(res, 'Invalid or expired verification token', 400);
-      await removeVerificationToken(verificationToken);
-    } else if (phone) {
-      resolvedPhone = formatPhoneNumber(phone);
-    } else {
-      return sendError(res, 'Verification token or phone is required', 400);
+    if (!verificationToken) {
+      return sendError(res, 'Session expired. Please complete registration again.', 400);
     }
+
+    const resolvedPhone = await getPhoneFromVerificationToken(verificationToken);
+    if (!resolvedPhone) return sendError(res, 'Invalid or expired session. Please complete registration again.', 400);
+    await removeVerificationToken(verificationToken);
 
     const isValid = await verifyOTPService(resolvedPhone, otp);
     if (!isValid) return sendError(res, 'Invalid or expired OTP', 400);
@@ -318,7 +315,16 @@ export const registerPassenger = async (req, res) => {
       logger.info(`Skipping SMS send for test phone number: ${userData.phone}. OTP: ${otp}`);
     } else {
       const formattedPhone = formatPhoneNumber(userData.phone);
-      await sendSMS(formattedPhone, `Your Baneen passenger registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
+      try {
+        await sendSMS(formattedPhone, `Your Baneen passenger registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
+      } catch (smsError) {
+        if (process.env.NODE_ENV === 'development') {
+          logger.warn(`SMS failed (unverified number). Use OTP 123456 to verify.`);
+          await overwriteStoredOtp(phoneForOTP, '123456');
+        } else {
+          throw smsError;
+        }
+      }
     }
 
     res.cookie('verificationToken', verificationToken, {
@@ -348,21 +354,18 @@ export const registerPassenger = async (req, res) => {
 
 export const verifyOTP = async (req, res) => {
   try {
-    const { verificationToken: bodyToken, phone, otp } = req.body || {};
+    const { verificationToken: bodyToken, otp } = req.body || {};
     const verificationToken = bodyToken || req.cookies?.verificationToken;
 
     if (!otp) return sendError(res, 'OTP is required', 400);
 
-    let resolvedPhone;
-    if (verificationToken) {
-      resolvedPhone = await getPhoneFromVerificationToken(verificationToken);
-      if (!resolvedPhone) return sendError(res, 'Invalid or expired verification token', 400);
-      await removeVerificationToken(verificationToken);
-    } else if (phone) {
-      resolvedPhone = formatPhoneNumber(phone);
-    } else {
-      return sendError(res, 'Verification token or phone is required', 400);
+    if (!verificationToken) {
+      return sendError(res, 'Session expired. Please complete registration again.', 400);
     }
+
+    const resolvedPhone = await getPhoneFromVerificationToken(verificationToken);
+    if (!resolvedPhone) return sendError(res, 'Invalid or expired session. Please complete registration again.', 400);
+    await removeVerificationToken(verificationToken);
 
     const isValid = await verifyOTPService(resolvedPhone, otp);
     if (!isValid) return sendError(res, 'Invalid or expired OTP', 400);
@@ -438,7 +441,16 @@ export const requestOTP = async (req, res) => {
 
     const formattedPhone = formatPhoneNumber(phone);
     const otp = await generateAndStoreOTP(formattedPhone);
-    await sendSMS(formattedPhone, `Your Baneen OTP is ${otp}`);
+    try {
+      await sendSMS(formattedPhone, `Your Baneen OTP is ${otp}`);
+    } catch (smsError) {
+      if (process.env.NODE_ENV === 'development') {
+        logger.warn(`SMS failed (unverified number). Use OTP 123456 to verify.`);
+        await overwriteStoredOtp(formattedPhone, '123456');
+      } else {
+        throw smsError;
+      }
+    }
 
     return sendSuccess(
       res,
@@ -563,7 +575,16 @@ export const forgotPassword = async (req, res) => {
         if (isTestNumber) {
           logger.info(`Skipping SMS send for test phone number: ${phone}. OTP: ${otp}`);
         } else {
-          await sendSMS(phoneForOTP, `Your Baneen password reset OTP is: ${otp}`);
+          try {
+            await sendSMS(phoneForOTP, `Your Baneen password reset OTP is: ${otp}`);
+          } catch (smsError) {
+            if (process.env.NODE_ENV === 'development') {
+              logger.warn(`SMS failed (unverified number). Use OTP 123456 to verify.`);
+              await overwriteStoredOtp(phoneForOTP, '123456');
+            } else {
+              throw smsError;
+            }
+          }
         }
 
         deliveryMethod = 'phone';
