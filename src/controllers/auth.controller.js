@@ -101,8 +101,8 @@ export const registerDriver = async (req,res) =>{
       try {
         await sendSMS(formattedPhone, `Your Baneen driver registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
       } catch (smsError) {
-        if (process.env.NODE_ENV === 'development') {
-          logger.warn(`SMS failed (unverified number). Use OTP 123456 to verify.`);
+        if (shouldUseOtpBypass(smsError)) {
+          logger.warn(`SMS failed (${smsError?.message || 'e.g. unverified/daily limit'}). Use OTP 123456 to verify.`);
           await overwriteStoredOtp(phoneForOTP, '123456');
         } else {
           throw smsError;
