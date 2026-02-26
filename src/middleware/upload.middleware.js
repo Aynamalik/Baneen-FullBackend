@@ -26,14 +26,15 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const allowedTypes = /jpeg|jpg|png|webp|heic|heif/;
+  const ext = path.extname(file.originalname).toLowerCase().replace(/^\./, '');
+  const extname = allowedTypes.test(ext);
+  const mimetype = /^image\/(jpeg|jpg|png|webp|heic|heif)$/.test(file.mimetype);
 
-  if (mimetype && extname) {
+  if (mimetype || extname) {
     return cb(null, true);
   } else {
-    cb(new Error('Only JPEG, JPG, and PNG images are allowed for CNIC upload'));
+    cb(new Error('Only JPEG, JPG, PNG, WebP, and HEIC images are allowed for CNIC upload'));
   }
 };
 
@@ -114,19 +115,21 @@ export const cleanupTempFiles = (req, res, next) => {
   next();
 };
 
+const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
 export const validateFiles = requiredFields => (req, res, next) => {
   for (let field of requiredFields) {
     const file = req.files?.[field]?.[0];
     if (!file) return sendError(res, `${field} is required`, 400);
-    if (!['image/jpeg', 'image/jpg', 'image/png'].includes(file.mimetype)) {
-      return sendError(res, `${field} must be JPEG or PNG`, 400);
+    if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+      return sendError(res, `${field} must be JPEG, PNG, WebP, or HEIC`, 400);
     }
     if (file.size < 100) return sendError(res, `${field} is too small`, 400);
   }
   next();
 };
 
-// Specific configuration for driver photos
+
 const driverPhotoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
@@ -138,16 +141,16 @@ const driverPhotoStorage = multer.diskStorage({
   }
 });
 
-// File filter for driver photos
 const driverPhotoFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const allowedTypes = /jpeg|jpg|png|webp|heic|heif/;
+  const ext = path.extname(file.originalname).toLowerCase().replace(/^\./, '');
+  const extname = allowedTypes.test(ext);
+  const mimetype = /^image\/(jpeg|jpg|png|webp|heic|heif)$/.test(file.mimetype);
 
-  if (mimetype && extname) {
+  if (mimetype || extname) {
     return cb(null, true);
   } else {
-    cb(new Error('Only JPEG, JPG, and PNG images are allowed for driver photos'));
+    cb(new Error('Only JPEG, JPG, PNG, WebP, and HEIC images are allowed for driver photos'));
   }
 };
 
