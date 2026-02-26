@@ -19,9 +19,16 @@ import { sendOTPEmail } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
 
 /** Use bypass OTP 123456 when SMS fails (unverified number, daily limit, etc.) for testing */
-const shouldUseOtpBypass = (smsError) =>
-  process.env.NODE_ENV === 'development' ||
-  (smsError?.message || '').toLowerCase().includes('daily messages limit');
+const shouldUseOtpBypass = (smsError) => {
+  const msg = (smsError?.message || '').toLowerCase();
+  return (
+    process.env.NODE_ENV === 'development' ||
+    msg.includes('daily messages limit') ||
+    msg.includes('daily limit') ||
+    (msg.includes('exceeded') && msg.includes('limit')) ||
+    msg.includes('not verified')
+  );
+};
 
 export const registerDriver = async (req,res) =>{
   try {
