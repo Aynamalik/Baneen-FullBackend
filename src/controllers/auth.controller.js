@@ -35,8 +35,8 @@ export const registerDriver = async (req,res) =>{
     const cnicImageFile = req.files?.cnicImage?.[0];
     const vehiclePermitPic =  req.files?.vehiclePermitPic?.[0];
     const licensePic =  req.files?.licensePic?.[0];
-    if (!cnicImageFile || !licensePic) {
-      return sendError(res, 'Required documents are missing', 400);
+    if (!licensePic) {
+      return sendError(res, 'License picture is required', 400);
     }
 
     if (!isValidPhone(userData.phone)) {
@@ -58,23 +58,18 @@ export const registerDriver = async (req,res) =>{
       return sendError(res, 'CNIC is already registered with another account', 400);
     }
 
-    const uploadPromises = [
-      uploadImage(cnicImageFile.path, { folder: 'baneen/cnic' }).then((r) => r.url),
-      uploadImage(licensePic.path, { folder: 'baneen/driver-license' }).then((r) => r.url),
-    ];
-    if (vehiclePermitPic) {
-      uploadPromises.push(
-        uploadImage(vehiclePermitPic.path, { folder: 'baneen/vehicle-permit' }).then((r) => r.url)
-      );
-    }
+    const uploadPromises = [];
+    if (cnicImageFile) uploadPromises.push(uploadImage(cnicImageFile.path, { folder: 'baneen/cnic' }).then((r) => r.url));
+    uploadPromises.push(uploadImage(licensePic.path, { folder: 'baneen/driver-license' }).then((r) => r.url));
+    if (vehiclePermitPic) uploadPromises.push(uploadImage(vehiclePermitPic.path, { folder: 'baneen/vehicle-permit' }).then((r) => r.url));
 
     let uploadedUrls;
     try {
       const results = await Promise.all(uploadPromises);
       uploadedUrls = {
-        cnicImage: results[0],
-        licensePic: results[1],
-        vehiclePermitPic: results[2] || null,
+        cnicImage: cnicImageFile ? results[0] : null,
+        licensePic: cnicImageFile ? results[1] : results[0],
+        vehiclePermitPic: vehiclePermitPic ? (cnicImageFile ? results[2] : results[1]) : null,
       };
     } catch (uploadErr) {
       logger.error('Cloudinary upload failed:', uploadErr);

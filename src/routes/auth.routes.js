@@ -35,9 +35,9 @@ const router = express.Router();
 router.post(
   '/register-driver',authLimiter,
   handleUploads([
-    { name: 'cnicImage', maxCount: 1 },
+    { name: 'cnicImage', maxCount: 1, required: false },
     { name: 'licensePic', maxCount: 1 },
-    { name: 'vehiclePermitPic', maxCount: 1 }
+    { name: 'vehiclePermitPic', maxCount: 1, required: false }
   ]),
   validate(registerDriverSchema),
   registerDriver,
