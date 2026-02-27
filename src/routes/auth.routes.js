@@ -9,6 +9,7 @@ import {
   forgotPassword,
   verifyResetOtp,
   resetPassword,
+  changePassword,
   verifyDriverOTP
 } from '../controllers/auth.controller.js';
 import { registerDriver,registerPassenger} from '../controllers/auth.controller.js';
@@ -25,6 +26,7 @@ import {
   forgotPasswordSchema,
   verifyResetOtpSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from '../utils/validators.js';
 import { authLimiter, otpLimiter } from '../middleware/rateLimit.middleware.js';
 
@@ -45,7 +47,7 @@ router.post(
 router.post(
   '/register-passenger',
   authLimiter,
-  handleUploads([{ name: 'cnicImage', maxCount: 1 }]),
+  handleUploads([{ name: 'cnicImage', maxCount: 1, required: false }]),
   validate(registerPassengerSchema),
   registerPassenger,
   cleanupTempFiles
@@ -61,9 +63,11 @@ router.post('/verify-otp', injectVerificationTokenFromCookie, validate(verifyOTP
 
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), forgotPassword);
 
-router.post('/verify-reset-otp', otpLimiter, injectResetIdentifierFromCookie, validate(verifyResetOtpSchema), verifyResetOtp);
+router.post('/verify-reset-otp', injectResetIdentifierFromCookie, validate(verifyResetOtpSchema), verifyResetOtp);
 
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
+
+router.post('/change-password', authenticate, validate(changePasswordSchema), changePassword);
 
 router.post('/refresh-token', refreshToken);
 

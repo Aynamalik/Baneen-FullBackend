@@ -10,6 +10,7 @@ import SOSAlert from '../models/SOSAlert.js';
 import Subscription from '../models/Subscription.js';
 import SystemSettings from '../models/SystemSettings.js';
 import AiInteraction from '../models/ChatbotAndVoiceLogs.js';
+import { uploadImage } from '../config/cloudinary.js';
 import logger from '../utils/logger.js';
 
 export const getDashboardStats = async (req, res) => {
@@ -1621,6 +1622,82 @@ export const getSOSAlertDetails = async (req, res) => {
 };
 
 /**
+ * Update admin profile (name)
+ */
+export const updateAdminProfile = async (req, res) => {
+  try {
+    const { name } = req.body;
+    const userId = req.user.userId;
+
+    if (!name || name.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name must be at least 2 characters'
+      });
+    }
+
+    const adminProfile = await Admin.findOne({ userId });
+    if (!adminProfile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admin profile not found'
+      });
+    }
+
+    adminProfile.name = name.trim();
+    await adminProfile.save();
+
+    logger.info(`Admin profile updated: ${userId}`);
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: { name: adminProfile.name }
+    });
+  } catch (error) {
+    logger.error('Update admin profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update profile'
+    });
+  }
+};
+
+/**
+ * Upload admin profile photo
+ */
+export const uploadAdminProfilePhoto = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile image is required'
+      });
+    }
+
+    const result = await uploadImage(file.path, { folder: 'baneen/profile' });
+    const profileImageUrl = result?.url || result;
+
+    await User.findByIdAndUpdate(userId, { profileImage: profileImageUrl });
+
+    logger.info(`Admin profile photo updated: ${userId}`);
+    res.json({
+      success: true,
+      message: 'Profile photo updated successfully',
+      data: { profileImage: profileImageUrl }
+    });
+  } catch (error) {
+    logger.error('Upload admin profile photo error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload profile photo'
+    });
+  }
+};
+
+/**
  * Get system settings (admin)
  */
 export const getSystemSettings = async (req, res) => {
@@ -1806,15 +1883,18 @@ export const getChatbotConversations = async (req, res) => {
       AiInteraction.countDocuments(query),
     ]);
 
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
     res.json({
       success: true,
       message: 'Chatbot conversations retrieved successfully',
-      data: conversations,
-      meta: {
-        page: Math.max(1, parseInt(page)),
-        limit: Math.min(50, Math.max(1, parseInt(limit))),
-        total,
-        totalPages: Math.ceil(total / Math.min(50, Math.max(1, parseInt(limit)))),
+      data: {
+        conversations,
+        pagination: {
+          page: Math.max(1, parseInt(page)),
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum),
+        },
       },
     });
   } catch (error) {

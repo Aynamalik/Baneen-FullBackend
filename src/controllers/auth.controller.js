@@ -18,15 +18,14 @@ import { sendSMS } from '../services/sms.service.js';
 import { sendOTPEmail } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
 
-/** Use bypass OTP 123456 when SMS fails (unverified number, daily limit, etc.) for testing */
+/** Use bypass OTP 123456 when Twilio fails (trial: unverified number or daily limit exceeded) */
 const shouldUseOtpBypass = (smsError) => {
   const msg = (smsError?.message || '').toLowerCase();
   return (
-    process.env.NODE_ENV === 'development' ||
+    msg.includes('not verified') ||
+    msg.includes('not verified for this twilio account') ||
     msg.includes('daily messages limit') ||
-    msg.includes('daily limit') ||
-    (msg.includes('exceeded') && msg.includes('limit')) ||
-    msg.includes('not verified')
+    msg.includes('exceeded')
   );
 };
 
@@ -268,10 +267,6 @@ export const registerPassenger = async (req, res) => {
     const userData = req.body;
     const cnicImageFile = req.files?.cnicImage?.[0];
 
-    if (!cnicImageFile) {
-      return sendError(res, 'CNIC image is required', 400);
-    }
-
     // Validate phone number
     if (!isValidPhone(userData.phone)) {
       logger.error(`Invalid phone number format: ${userData.phone}`);
@@ -292,16 +287,17 @@ export const registerPassenger = async (req, res) => {
       return sendError(res, 'CNIC is already registered with another account', 400);
     }
 
-    let cnicImageUrl;
-    try {
-      const uploadResult = await uploadImage(cnicImageFile.path, { folder: 'baneen/cnic' });
-      cnicImageUrl = uploadResult.url;
-    } catch (uploadErr) {
-      logger.error('Cloudinary upload failed:', uploadErr);
-      return sendError(res, 'Failed to upload CNIC image. Please try again.', 500);
+    let cnicImageUrl = null;
+    if (cnicImageFile) {
+      try {
+        const uploadResult = await uploadImage(cnicImageFile.path, { folder: 'baneen/cnic' });
+        cnicImageUrl = uploadResult.url;
+      } catch (uploadErr) {
+        logger.error('Cloudinary upload failed:', uploadErr);
+        return sendError(res, 'Failed to upload CNIC image. Please try again.', 500);
+      }
     }
 
-  
     const registrationData = {
       userData,
       files: {
@@ -731,6 +727,34 @@ export const resetPassword = async (req, res) => {
   } catch (error) {
     logger.error('Reset password error:', error);
     return sendError(res, 'Failed to reset password', 500);
+  }
+};
+
+/**
+ * Change password for authenticated user (requires current password)
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.userId;
+
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return sendError(res, 'User not found', 404);
+    }
+
+    const isValid = await user.comparePassword(currentPassword);
+    if (!isValid) {
+      return sendError(res, 'Current password is incorrect', 400);
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return sendSuccess(res, null, 'Password changed successfully');
+  } catch (error) {
+    logger.error('Change password error:', error);
+    return sendError(res, 'Failed to change password', 500);
   }
 };
 

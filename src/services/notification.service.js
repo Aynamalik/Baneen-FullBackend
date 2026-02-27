@@ -1,6 +1,29 @@
 import Notification from '../models/Notification.js';
+import Admin from '../models/Admin.js';
 import { NOTIFICATION_TYPES } from '../config/constants.js';
 import logger from '../utils/logger.js';
+
+/**
+ * Notify all admin users (for SOS, complaints, driver approvals, etc.)
+ */
+export const notifyAdmins = async (type, title, message, data = {}) => {
+  try {
+    const admins = await Admin.find({}).select('userId').lean();
+    const userIds = admins.map((a) => a.userId).filter(Boolean);
+    if (userIds.length === 0) return [];
+
+    const notifications = await Promise.all(
+      userIds.map((userId) =>
+        Notification.create({ userId, type, title, message, data })
+      )
+    );
+    logger.info(`Notified ${notifications.length} admin(s): ${title}`);
+    return notifications;
+  } catch (error) {
+    logger.error('Notify admins error:', error);
+    throw error;
+  }
+};
 
 /**
  * Create a notification for a user
@@ -58,6 +81,14 @@ export const markAsRead = async (notificationId, userId) => {
   notification.readAt = new Date();
   await notification.save();
   return notification;
+};
+
+/**
+ * Get unread notification count for a user
+ */
+export const getUnreadCount = async (userId) => {
+  const count = await Notification.countDocuments({ userId, isRead: false });
+  return count;
 };
 
 /**

@@ -74,7 +74,7 @@ const passengerSchema = new mongoose.Schema(
     },
     cnicImage: {
       type: String,
-      required: true,
+      // required: true,
     }
   },
   {

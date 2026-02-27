@@ -1,5 +1,6 @@
 import {
   getUserNotifications,
+  getUnreadCount,
   markAsRead as markNotificationAsRead,
   markAllAsRead as markAllNotificationsAsRead,
 } from '../services/notification.service.js';
@@ -33,6 +34,20 @@ export const getNotifications = async (req, res) => {
   } catch (error) {
     logger.error('Get notifications error:', error);
     return sendError(res, 'Failed to get notifications', 500);
+  }
+};
+
+export const getUnreadCountController = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const count = await getUnreadCount(userId);
+    return res.status(200).json({
+      success: true,
+      data: { unreadCount: count },
+    });
+  } catch (error) {
+    logger.error('Get unread count error:', error);
+    return sendError(res, 'Failed to get unread count', 500);
   }
 };
 

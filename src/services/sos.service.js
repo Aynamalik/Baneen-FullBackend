@@ -3,9 +3,10 @@ import Ride from '../models/Ride.js';
 import Passenger from '../models/Passenger.js';
 import Driver from '../models/Driver.js';
 import { sendSMS } from './sms.service.js';
+import { notifyAdmins } from './notification.service.js';
 import { formatPhoneNumber } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
-import { USER_ROLES } from '../config/constants.js';
+import { USER_ROLES, NOTIFICATION_TYPES } from '../config/constants.js';
 
 /**
  * Find active ride for user (passenger or driver)
@@ -64,11 +65,7 @@ const notifyEmergencyContacts = async (emergencyContacts, userName, location) =>
  * Create SOS alert and optionally notify emergency contacts
  */
 export const triggerSOSAlertService = async (userId, userRole, data) => {
-  const { location, rideId: bodyRideId, description, severity, alertType, source } = data;
-
-  if (!location?.latitude || !location?.longitude) {
-    throw new Error('Location (latitude and longitude) is required');
-  }
+  const { location: bodyLocation, rideId: bodyRideId, description, severity, alertType, source } = data;
 
   // Find active ride if not provided
   let ride = null;
@@ -77,6 +74,27 @@ export const triggerSOSAlertService = async (userId, userRole, data) => {
   }
   if (!ride) {
     ride = await findActiveRideForUser(userId, userRole);
+  }
+
+  // Use live location: from body, or from ride's current tracking, or from ride's pickup
+  let location = bodyLocation;
+  if (!location?.latitude || !location?.longitude) {
+    if (ride?.tracking?.currentLocation?.latitude != null && ride?.tracking?.currentLocation?.longitude != null) {
+      location = {
+        latitude: ride.tracking.currentLocation.latitude,
+        longitude: ride.tracking.currentLocation.longitude,
+        address: ride.pickup?.address || 'Live location from ride',
+      };
+    } else if (ride?.pickup?.location?.latitude != null && ride?.pickup?.location?.longitude != null) {
+      location = {
+        latitude: ride.pickup.location.latitude,
+        longitude: ride.pickup.location.longitude,
+        address: ride.pickup.address || 'Pickup location',
+      };
+    }
+  }
+  if (!location?.latitude || !location?.longitude) {
+    throw new Error('Location (latitude and longitude) is required. Enable GPS and try again, or ensure you have an active ride.');
   }
 
   // Get emergency contacts from passenger profile
@@ -141,6 +159,18 @@ export const triggerSOSAlertService = async (userId, userRole, data) => {
   }
 
   logger.info(`SOS alert created: ${alert._id} for user ${userId}${ride ? `, ride ${ride._id}` : ''}`);
+
+  // Notify all admins
+  try {
+    await notifyAdmins(
+      NOTIFICATION_TYPES.SOS_ALERT,
+      'SOS Alert Triggered',
+      `A user has triggered an emergency SOS alert. Location: ${location?.address || 'Shared'}`,
+      { alertId: alert._id, rideId: ride?._id, userId }
+    );
+  } catch (notifyErr) {
+    logger.error('SOS: Failed to notify admins:', notifyErr);
+  }
 
   return {
     alert: {

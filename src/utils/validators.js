@@ -38,6 +38,12 @@ export const resetPasswordSchema = Joi.object({
   newPassword: Joi.string().min(8).required(),
 });
 
+// Change password (authenticated user)
+export const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().required(),
+  newPassword: Joi.string().min(8).required(),
+});
+
 export const verifyResetOtpSchema = Joi.object({
   identifier: Joi.alternatives().try(
     Joi.string().email(),
@@ -99,14 +105,14 @@ export const paymentSchema = Joi.object({
   type: Joi.string().valid('ride', 'subscription', 'refund').required(),
 });
 
-// SOS alert validation
+// SOS alert validation (location optional - backend uses live location from ride if not provided)
 export const sosAlertSchema = Joi.object({
   rideId: Joi.string().optional(),
   location: Joi.object({
     latitude: Joi.number().required(),
     longitude: Joi.number().required(),
     address: Joi.string().optional(),
-  }).required(),
+  }).optional(),
   description: Joi.string().max(500).optional(),
   severity: Joi.string().valid('low', 'medium', 'high', 'critical').optional(),
   source: Joi.string().optional(),

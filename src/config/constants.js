@@ -65,6 +65,9 @@ export const NOTIFICATION_TYPES = {
   SOS: 'sos',
   SYSTEM: 'system',
   CHAT: 'chat',
+  SOS_ALERT: 'sos_alert',
+  DRIVER_APPROVAL: 'driver_approval',
+  COMPLAINT: 'complaint',
 };
 
 export const DRIVER_AVAILABILITY = {

@@ -111,6 +111,20 @@ export const registerDriverService = async (userData, files) => {
   const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
   const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
+  // 5️⃣ Notify admins of new driver pending approval
+  try {
+    const { notifyAdmins } = await import('./notification.service.js');
+    const { NOTIFICATION_TYPES } = await import('../config/constants.js');
+    await notifyAdmins(
+      NOTIFICATION_TYPES.DRIVER_APPROVAL,
+      'New Driver Pending Approval',
+      `${name} (${email}) has registered as a driver and is awaiting approval.`,
+      { driverId: profile._id, userId: user._id }
+    );
+  } catch (notifyErr) {
+    logger.error('Driver registration: Failed to notify admins:', notifyErr);
+  }
+
   logger.info(`Driver registered successfully: ${email}`);
 
   return { user, profile, accessToken, refreshToken };

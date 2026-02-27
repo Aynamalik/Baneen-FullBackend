@@ -6,13 +6,16 @@ const client = twilio(
   process.env.TWILIO_AUTH_TOKEN
 );
 
+// Support both TWILIO_PHONE and TWILIO_PHONE_NUMBER (Twilio docs use TWILIO_PHONE_NUMBER)
+const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_PHONE;
+
 export const sendSMS = async (to, message) => {
   try {
     logger.info(`Attempting to send SMS to: ${to}`);
 
     const result = await client.messages.create({
       body: message,
-      from: process.env.TWILIO_PHONE,
+      from: twilioFromNumber,
       to,
     });
 
@@ -21,7 +24,7 @@ export const sendSMS = async (to, message) => {
   } catch (error) {
     logger.error('Twilio SMS error:', error);
     logger.error('Phone number used:', to);
-    logger.error('Twilio phone number:', process.env.TWILIO_PHONE);
+    logger.error('Twilio from number:', twilioFromNumber);
 
     // Provide more specific error message
     if (error.code === 21211) {

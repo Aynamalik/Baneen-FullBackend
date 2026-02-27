@@ -88,27 +88,34 @@ export const handleUploads = (fields) => (req, res, next) => {
     req.body = processedBody;
     req.files = processedFiles;
 
-    // Validate required files
-    for (let field of fields.map(f => f.name)) {
-      if (!req.files?.[field]?.[0]) return sendError(res, `${field} is required`, 400);
+    // Validate required files (optional if field.required === false)
+    for (let field of fields) {
+      const name = typeof field === 'string' ? field : field.name;
+      const required = typeof field === 'object' && field.required === false ? false : true;
+      if (required && !req.files?.[name]?.[0]) return sendError(res, `${name} is required`, 400);
     }
 
     next();
   });
 };
 // Cleanup middleware
+const cleanupFile = (file) => {
+  if (file?.path) {
+    try {
+      fs.unlinkSync(file.path);
+      logger.info(`Cleaned up temp file: ${file.filename}`);
+    } catch (err) {
+      logger.error(`Failed to cleanup temp file: ${err.message}`);
+    }
+  }
+};
+
 export const cleanupTempFiles = (req, res, next) => {
   res.on('finish', () => {
+    if (req.file) cleanupFile(req.file);
     if (req.files) {
       Object.values(req.files).forEach(arr =>
-        arr.forEach(file => {
-          try {
-            fs.unlinkSync(file.path);
-            logger.info(`Cleaned up temp file: ${file.filename}`);
-          } catch (err) {
-            logger.error(`Failed to cleanup temp file: ${err.message}`);
-          }
-        })
+        Array.isArray(arr) ? arr.forEach(cleanupFile) : cleanupFile(arr)
       );
     }
   });
@@ -162,5 +169,19 @@ export const uploadDriverPhoto = multer({
     files: 1, // Only one file
   }
 }).single('driverPhoto');
+
+const profilePhotoStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, `profile-${uniqueSuffix}${path.extname(file.originalname)}`);
+  },
+});
+
+export const uploadProfilePhoto = multer({
+  storage: profilePhotoStorage,
+  fileFilter: driverPhotoFilter,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+}).single('profileImage');
 
 export default upload;

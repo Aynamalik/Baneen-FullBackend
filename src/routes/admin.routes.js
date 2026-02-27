@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/role.middleware.js';
 import { USER_ROLES } from '../config/constants.js';
+import { uploadProfilePhoto, cleanupTempFiles } from '../middleware/upload.middleware.js';
 import {
   getDashboardStats,
   getAllUsers,
@@ -38,6 +39,8 @@ import {
   resolveSOSAlert,
   getSystemSettings,
   updateSystemSettings,
+  updateAdminProfile,
+  uploadAdminProfilePhoto,
   getChatbotConversations,
   getChatbotAnalytics,
 } from '../controllers/admin.controller.js';
@@ -89,6 +92,9 @@ router.put('/sos/alerts/:id/resolve', resolveSOSAlert);
 
 router.get('/chatbot/conversations', getChatbotConversations);
 router.get('/chatbot/analytics', getChatbotAnalytics);
+
+router.put('/profile', updateAdminProfile);
+router.post('/profile/photo', uploadProfilePhoto, cleanupTempFiles, uploadAdminProfilePhoto);
 
 router.get('/system/stats', getSystemStats);
 router.get('/system/settings', getSystemSettings);
