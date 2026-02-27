@@ -47,7 +47,7 @@ router.post(
 router.post(
   '/register-passenger',
   authLimiter,
-  handleUploads([{ name: 'cnicImage', maxCount: 1, required: false }]),
+  handleUploads([]),
   validate(registerPassengerSchema),
   registerPassenger,
   cleanupTempFiles
