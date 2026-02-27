@@ -170,7 +170,8 @@ const driverSchema = new mongoose.Schema(
       }),
     },
     isApproved: {
-      type: Boolean,
+      type: Boolean, 
+      
       default: false,
       index: true,
     },
