@@ -86,13 +86,23 @@ export const updateProfile = async (req, res) => {
 export const updateAvailability = async (req, res) => {
   try {
     const driverId = req.user.userId;
-    const { status, latitude, longitude, address } = req.body;
+    const { status, latitude, longitude, address, currentLocation } = req.body;
 
     if (!Object.values(DRIVER_AVAILABILITY).includes(status)) {
       return sendError(res, 'Invalid availability status', 400);
     }
 
-    const location = latitude && longitude ? { latitude, longitude, address } : null;
+    // Support both formats: flat (latitude, longitude) or nested (currentLocation)
+    let location = null;
+    if (currentLocation?.latitude != null && currentLocation?.longitude != null) {
+      location = {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        address: currentLocation.address || address || null,
+      };
+    } else if (latitude != null && longitude != null) {
+      location = { latitude, longitude, address: address || null };
+    }
 
     const driver = await Driver.findOne({ userId: driverId });
     if (!driver) {
@@ -109,7 +119,7 @@ export const updateAvailability = async (req, res) => {
 
     return sendSuccess(res, {
       availability: driver.availability,
-      status: driver.status
+      status: driver.availability?.status || driver.status
     }, 'Availability updated successfully');
   } catch (error) {
     logger.error('Update availability error:', error);

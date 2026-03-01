@@ -25,9 +25,9 @@ const BASE_FARE = 100;
 const PER_KM_RATE = 30;
 const DRIVER_SEARCH_RADIUS_KM = 5;
 
-// 🔹 Google Maps Distance Helper
+// 🔹 Google Maps Distance Helper (uses GOOGLE_MAPS_API_KEY or GOOGLE_PLACES_API_KEY)
 export const getDistanceFromGoogle = async (pickup, dropoff) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
 
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?units=metric&origins=${pickup.latitude},${pickup.longitude}&destinations=${dropoff.latitude},${dropoff.longitude}&key=${apiKey}`;
 
@@ -72,7 +72,7 @@ export const verifyRefreshToken = (token) => {
 import bcrypt from 'bcryptjs';
 
 export const registerDriverService = async (userData, files) => {
-  const { name, email, phone, alternatePhone, cnic, password, vehicleType, vehicleName, owner, address } = userData;
+  const { name, email, phone, alternatePhone, cnic, password, vehicleType, vehicleName, owner, address, licenseNumber } = userData;
 
   // 1️⃣ Check if user already exists
   const existingUser = await User.findOne({ email });
@@ -98,6 +98,7 @@ export const registerDriverService = async (userData, files) => {
     userId: user._id,
     name: name,
     address: address,
+    licenseNumber: licenseNumber || null,
     licenseImage: files.licensePic, // Driver model has 'licenseImage' field, not 'licensePic'
     vehicle: {
       vehicleType: vehicleType,

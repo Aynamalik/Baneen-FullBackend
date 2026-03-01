@@ -18,6 +18,7 @@ import {
   getScheduledRides,
   getFareEstimate,
   updateDriverAvailability,
+  getPendingRidesForDriver,
   getActiveRides,
   getRideStats,
   triggerSOSAlert,
@@ -34,6 +35,8 @@ router.post('/sos/alert', requireRole([USER_ROLES.PASSENGER, USER_ROLES.DRIVER])
 router.post('/request', requireRole([USER_ROLES.PASSENGER]), validate(rideRequestSchema), requestRide);
 
 router.put('/driver/availability', requireRole([USER_ROLES.DRIVER]), updateDriverAvailability);
+
+router.get('/pending-for-driver', requireRole([USER_ROLES.DRIVER]), getPendingRidesForDriver);
 
 router.get('/history', getRideHistory);
 router.get('/scheduled', requireRole([USER_ROLES.PASSENGER]), getScheduledRides);

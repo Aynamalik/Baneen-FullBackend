@@ -1,4 +1,3 @@
-
 export const injectVerificationTokenFromCookie = (req, res, next) => {
   if (!req.body) req.body = {};
   if (!req.body.verificationToken && req.cookies?.verificationToken) {

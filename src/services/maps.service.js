@@ -1,11 +1,14 @@
 import axios from 'axios';
 import logger from '../utils/logger.js';
 
+/** Get Google Maps API key (Maps or Places key - both work for Geocoding, Directions, Places) */
+const getMapsApiKey = () => process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
+
 /**
  * Get distance and duration between two points using Google Maps Distance Matrix API
  */
 export const getDistanceFromGoogle = async (pickupCoords, dropoffCoords) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = getMapsApiKey();
 
   if (!apiKey) {
     throw new Error('Google Maps API key not configured');
@@ -48,7 +51,7 @@ export const getDistanceFromGoogle = async (pickupCoords, dropoffCoords) => {
  * Get directions and route information using Google Maps Directions API
  */
 export const getDirectionsFromGoogle = async (pickupCoords, dropoffCoords) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = getMapsApiKey();
 
   if (!apiKey) {
     throw new Error('Google Maps API key not configured');
@@ -95,7 +98,9 @@ export const getDirectionsFromGoogle = async (pickupCoords, dropoffCoords) => {
     };
   } catch (error) {
     logger.error('Google Maps Directions API Error:', error.message);
-    throw new Error('Failed to get directions. Please try again.');
+    // Include actual error for debugging (e.g. invalid key, quota, API not enabled)
+    const msg = error.response?.data?.error_message || error.message;
+    throw new Error(`Failed to get directions: ${msg}`);
   }
 };
 
@@ -103,7 +108,7 @@ export const getDirectionsFromGoogle = async (pickupCoords, dropoffCoords) => {
  * Geocode an address to coordinates using Google Maps Geocoding API
  */
 export const geocodeAddress = async (address) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = getMapsApiKey();
 
   if (!apiKey) {
     throw new Error('Google Maps API key not configured');
@@ -148,7 +153,7 @@ export const geocodeAddress = async (address) => {
  * Reverse geocode coordinates to address using Google Maps Geocoding API
  */
 export const reverseGeocode = async (latitude, longitude) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = getMapsApiKey();
 
   if (!apiKey) {
     throw new Error('Google Maps API key not configured');
@@ -191,7 +196,7 @@ export const reverseGeocode = async (latitude, longitude) => {
  * Search for places using Google Maps Places API
  */
 export const searchPlaces = async (query, location = null, radius = 5000) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = getMapsApiKey();
 
   if (!apiKey) {
     throw new Error('Google Maps API key not configured');

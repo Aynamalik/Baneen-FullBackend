@@ -23,4 +23,5 @@ export const registerDriverSchema = Joi.object({
   vehicleName: Joi.string().min(2).required(),
   owner: Joi.string().min(3).required(),
   address: Joi.string().min(10).required(),
+  licenseNumber: Joi.string().min(5).optional().allow('', null),
 });

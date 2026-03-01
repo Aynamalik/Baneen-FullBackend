@@ -10,7 +10,8 @@ import {
   getRideHistoryService,
   getFareEstimateService,
   updateDriverAvailabilityService,
-  getScheduledRidesService
+  getScheduledRidesService,
+  getPendingRidesForDriverService,
 } from '../services/ride.service.js';
 import { triggerSOSAlertService } from '../services/sos.service.js';
 import { geocodeAddress } from '../services/maps.service.js';
@@ -391,6 +392,33 @@ export const updateDriverAvailability = async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message
+    });
+  }
+};
+
+export const getPendingRidesForDriver = async (req, res) => {
+  try {
+    const driverId = req.user.userId;
+
+    if (req.user.role !== USER_ROLES.DRIVER) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only drivers can fetch pending ride requests'
+      });
+    }
+
+    const result = await getPendingRidesForDriverService(driverId);
+
+    res.json({
+      success: true,
+      data: result,
+      message: `Found ${result.count} pending ride request(s)`
+    });
+  } catch (error) {
+    logger.error('Get pending rides error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to fetch pending rides'
     });
   }
 };

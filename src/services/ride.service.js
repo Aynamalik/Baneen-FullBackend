@@ -157,7 +157,7 @@ export const requestRideService = async (passengerId, rideData) => {
       finalDropoffCoords.longitude
     );
     const estimatedTime = estimateTravelTime(haversineDistance.distanceKm);
-    
+
     routeData = {
       distance: haversineDistance.distance,
       duration: estimatedTime.duration,
@@ -1102,6 +1102,113 @@ export const getScheduledRidesService = async (userId) => {
 };
 
 /**
+ * Get pending ride requests for a driver (polling alternative to Socket.IO)
+ * Returns rides that match driver's location, vehicle type, and eligibility
+ */
+export const getPendingRidesForDriverService = async (driverId) => {
+  const driver = await Driver.findOne({ userId: driverId })
+    .populate('userId', 'name phone');
+
+  if (!driver) {
+    throw new Error('Driver profile not found');
+  }
+
+  if (driver.availability?.status !== DRIVER_AVAILABILITY.AVAILABLE) {
+    throw new Error('Driver must be online (available) to receive ride requests');
+  }
+
+  if (!driver.isApproved) {
+    throw new Error('Driver is not approved');
+  }
+
+  const driverLat = driver.availability?.currentLocation?.latitude;
+  const driverLng = driver.availability?.currentLocation?.longitude;
+
+  if (!driverLat || !driverLng) {
+    throw new Error('Driver location is required. Update availability with currentLocation.');
+  }
+
+  const driverVehicleType = driver.vehicle?.vehicleType;
+  if (!driverVehicleType) {
+    throw new Error('Driver must have a registered vehicle');
+  }
+
+  // Find pending rides (immediate only, not scheduled) that match driver's vehicle type
+  const pendingRides = await Ride.find({
+    status: 'pending',
+    isScheduled: false,
+    vehicleType: driverVehicleType,
+  })
+    .populate('passengerId', 'name rating')
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean();
+
+  const ridesWithDistance = [];
+  for (const ride of pendingRides) {
+    const pickupLat = ride.pickup?.location?.latitude;
+    const pickupLng = ride.pickup?.location?.longitude;
+
+    if (!pickupLat || !pickupLng) continue;
+
+    const distance = calculateHaversineDistance(
+      driverLat,
+      driverLng,
+      pickupLat,
+      pickupLng
+    );
+
+    // Only include rides within search radius (5km)
+    if (distance.distanceKm <= FARE_CONFIG.DRIVER_SEARCH_RADIUS_KM) {
+      const eta = estimateTravelTime(distance.distanceKm, 30);
+      ridesWithDistance.push({
+        ...ride,
+        driverDistance: {
+          km: distance.distanceKm,
+          text: distance.distanceText,
+        },
+        driverETA: {
+          minutes: Math.ceil(eta.duration / 60),
+          text: eta.durationText,
+        },
+      });
+    }
+  }
+
+  // Sort by distance (closest first)
+  ridesWithDistance.sort((a, b) => a.driverDistance.km - b.driverDistance.km);
+
+  return {
+    rides: ridesWithDistance.map((r) => ({
+      rideId: r._id,
+      pickup: {
+        address: r.pickup?.address,
+        coordinates: r.pickup?.location,
+      },
+      dropoff: {
+        address: r.destination?.address,
+        coordinates: r.destination?.location,
+      },
+      fare: r.fare?.estimated,
+      fareBreakdown: r.fare?.breakdown,
+      distance: r.route?.distance,
+      duration: r.route?.duration,
+      paymentMethod: r.payment?.method,
+      notes: r.notes,
+      passenger: {
+        id: r.passengerId?._id,
+        name: r.passengerId?.name,
+        rating: r.passengerId?.rating || 0,
+      },
+      driverDistance: r.driverDistance,
+      driverETA: r.driverETA,
+      requestedAt: r.createdAt,
+    })),
+    count: ridesWithDistance.length,
+  };
+};
+
+/**
  * Update driver availability status (Driver)
  */
 export const updateDriverAvailabilityService = async (driverId, availabilityData) => {
@@ -1168,7 +1275,7 @@ export const getFareEstimateService = async (pickupCoords, dropoffCoords) => {
       dropoffCoords.longitude
     );
     const estimatedTime = estimateTravelTime(haversineDistance.distanceKm);
-    
+
     routeData = {
       distance: haversineDistance.distance,
       duration: estimatedTime.duration,

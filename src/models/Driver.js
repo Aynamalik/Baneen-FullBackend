@@ -171,7 +171,6 @@ const driverSchema = new mongoose.Schema(
     },
     isApproved: {
       type: Boolean, 
-      
       default: false,
       index: true,
     },
@@ -206,6 +205,14 @@ driverSchema.methods.updateAvailability = function (status, location) {
     };
   }
   this.availability.lastUpdated = new Date();
+  // Keep top-level status in sync: available->ONLINE, offline->OFFLINE, busy->ON_RIDE
+  if (status === DRIVER_AVAILABILITY.AVAILABLE) {
+    this.status = 'ONLINE';
+  } else if (status === DRIVER_AVAILABILITY.OFFLINE) {
+    this.status = 'OFFLINE';
+  } else if (status === DRIVER_AVAILABILITY.BUSY) {
+    this.status = 'ON_RIDE';
+  }
 };
 
 
