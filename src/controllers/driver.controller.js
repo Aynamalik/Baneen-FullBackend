@@ -6,6 +6,7 @@ import Vehicle from '../models/Vehicle.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { DRIVER_AVAILABILITY } from '../config/constants.js';
 import logger from '../utils/logger.js';
+import { getPendingRidesForDriverService } from '../services/ride.service.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -495,18 +496,40 @@ export const getEarningsStats = async (req, res) => {
 export const setOnline = async (req, res) => {
   try {
     const driverId = req.user.userId;
+    const { latitude, longitude, address } = req.body || {};
 
     const driver = await Driver.findOne({ userId: driverId });
     if (!driver) {
       return sendError(res, 'Driver profile not found', 404);
     }
-    driver.updateAvailability(DRIVER_AVAILABILITY.AVAILABLE);
+
+    const location =
+      latitude != null && longitude != null
+        ? { latitude: Number(latitude), longitude: Number(longitude), address: address || null }
+        : null;
+    driver.updateAvailability(DRIVER_AVAILABILITY.AVAILABLE, location);
     await driver.save();
 
-    return sendSuccess(res, {
-      availability: driver.availability,
-      status: driver.status
-    }, 'Driver is now online');
+    let pendingRides = { rides: [], count: 0 };
+    try {
+      const result = await getPendingRidesForDriverService(driverId);
+      pendingRides = { rides: result.rides, count: result.count };
+    } catch (pendingErr) {
+      logger.debug('Pending rides not fetched on setOnline:', pendingErr.message);
+    }
+
+    return sendSuccess(
+      res,
+      {
+        availability: driver.availability,
+        status: driver.status,
+        pendingRides: pendingRides.rides,
+        pendingRidesCount: pendingRides.count,
+      },
+      pendingRides.count > 0
+        ? `Driver is now online. ${pendingRides.count} ride request(s) available.`
+        : 'Driver is now online'
+    );
   } catch (error) {
     logger.error('Set online error:', error);
     return sendError(res, 'Failed to set driver online', 500);

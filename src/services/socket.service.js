@@ -161,25 +161,34 @@ class SocketService {
       }
     });
 
-    // Update location (Driver - Real-time tracking)
+    // Update location (Driver - Real-time tracking). Persists to DB and notifies passenger.
     socket.on('ride:location_update', async (data) => {
       try {
         const { rideId, latitude, longitude, speed, heading } = data;
+        const driverUserId = socket.userId;
 
-        const activeRide = this.activeRides.get(rideId);
-        if (activeRide && activeRide.passengerSocket) {
-          // Send location update to passenger
-          this.io.to(activeRide.passengerSocket).emit('ride:driver_location', {
-            rideId,
-            location: { latitude, longitude },
-            speed,
-            heading,
-            timestamp: new Date()
+        if (!rideId || latitude == null || longitude == null) {
+          socket.emit('ride:error', {
+            type: 'location_update_failed',
+            message: 'rideId, latitude, and longitude are required'
           });
+          return;
         }
 
+        const { updateRideLocationService } = await import('./ride.service.js');
+        await updateRideLocationService(driverUserId, rideId, {
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+          speed: speed != null ? Number(speed) : undefined,
+          heading: heading != null ? Number(heading) : undefined
+        });
+        // Service persists to DB and emits ride:driver_location to passenger
       } catch (error) {
         logger.error('Location update socket error:', error);
+        socket.emit('ride:error', {
+          type: 'location_update_failed',
+          message: error.message || 'Failed to update location'
+        });
       }
     });
 

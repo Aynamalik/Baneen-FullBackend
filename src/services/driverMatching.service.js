@@ -330,31 +330,36 @@ class DriverMatchingService {
 
   /**
    * Handle driver response to ride request
+   * @param {string} rideId - Ride ID
+   * @param {string} driverUserId - User ID from JWT (req.user.userId)
+   * @param {boolean} accepted - true = accept, false = reject
    */
-  async handleDriverResponse(rideId, driverId, accepted) {
+  async handleDriverResponse(rideId, driverUserId, accepted) {
     try {
-      logger.info(`Driver ${driverId} ${accepted ? 'accepted' : 'rejected'} ride ${rideId}`);
+      logger.info(`Driver ${driverUserId} ${accepted ? 'accepted' : 'rejected'} ride ${rideId}`);
 
       const ride = await Ride.findById(rideId);
       if (!ride) {
         throw new Error('Ride not found');
       }
 
+      if (ride.status !== 'pending') {
+        throw new Error('Ride is no longer available for acceptance');
+      }
+
       if (accepted) {
-        // Assign driver to ride
-        ride.driverId = driverId;
+        const driver = await Driver.findOne({ userId: driverUserId });
+        if (!driver) {
+          throw new Error('Driver profile not found');
+        }
+
+        ride.driverId = driver._id;
         ride.status = 'accepted';
         ride.acceptedAt = new Date();
         await ride.save();
 
-        // Update driver status
-        await Driver.findByIdAndUpdate(driverId, {
-          status: 'ON_RIDE',
-          'availability.status': DRIVER_AVAILABILITY.ON_RIDE
-        });
-
-        // Notify other drivers that ride is taken
-        // (In production, cancel their notifications)
+        driver.updateAvailability(DRIVER_AVAILABILITY.BUSY);
+        await driver.save();
 
         return {
           success: true,
@@ -362,16 +367,13 @@ class DriverMatchingService {
           ride,
           message: 'Ride successfully assigned to driver'
         };
-
       } else {
-        // Driver rejected - try next driver if available
         return {
           success: true,
           action: 'RIDE_REJECTED',
           message: 'Driver rejected the ride'
         };
       }
-
     } catch (error) {
       logger.error('Error handling driver response:', error);
       throw error;

@@ -58,6 +58,54 @@ export const authenticate = async (req, res, next) => {
 };
 
 
+/**
+ * Bearer-only authentication - accepts only Authorization: Bearer <token> header.
+ * No cookie fallback. Use for mobile/Flutter clients.
+ */
+export const authenticateBearer = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return sendError(res, 'Bearer token required. Provide Authorization: Bearer <token>', 401);
+    }
+
+    const token = authHeader.substring(7);
+
+    let decoded;
+    try {
+      decoded = verifyAccessToken(token);
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        return sendError(res, 'Token expired', 401);
+      }
+      return sendError(res, 'Invalid token', 401);
+    }
+
+    const user = await User.findById(decoded.userId);
+
+    if (!user) {
+      return sendError(res, 'User not found', 401);
+    }
+
+    if (!user.isActive || user.isBlocked) {
+      return sendError(res, 'Account is inactive or blocked', 403);
+    }
+
+    req.user = {
+      userId: user._id.toString(),
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      isVerified: user.isVerified,
+    };
+
+    next();
+  } catch (error) {
+    logger.error('Bearer authentication error:', error);
+    return sendError(res, 'Authentication failed', 401);
+  }
+};
+
 export const optionalAuthenticate = async (req, res, next) => {
   try {
   

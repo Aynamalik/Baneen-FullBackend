@@ -234,13 +234,25 @@ export const requestRideService = async (passengerId, rideData) => {
         return { driver, distance: null, eta: null, etaText: null };
       }).filter(d => d.distance !== null);
 
-      if (driversWithDistance.length > 0) {
-        nearestDriver = driversWithDistance.reduce((nearest, current) =>
+      // Only drivers within search radius (5km) get the ride request (real-app behaviour)
+      const nearbyDriversWithDistance = driversWithDistance.filter(
+        d => d.distance <= FARE_CONFIG.DRIVER_SEARCH_RADIUS_KM
+      );
+
+      if (nearbyDriversWithDistance.length === 0) {
+        throw new Error('No drivers nearby at the moment. Please try again in a few minutes.');
+      }
+
+      if (nearbyDriversWithDistance.length > 0) {
+        nearestDriver = nearbyDriversWithDistance.reduce((nearest, current) =>
           current.distance < nearest.distance ? current : nearest
         );
         driverETA = nearestDriver.eta;
         driverETAText = nearestDriver.etaText;
       }
+
+      // Use only nearby drivers for notification and response (overwrite for step 7)
+      availableDrivers = nearbyDriversWithDistance.map(d => d.driver);
     }
   }
 
@@ -668,16 +680,23 @@ export const startRideService = async (driverId, rideId, startCoords, driverPhot
 
 /**
  * Update ride location (Driver - Real-time tracking)
+ * @param {string} driverUserId - User ID from JWT (req.user.userId)
+ * @param {string} rideId - Ride ID
+ * @param {object} locationData - { latitude, longitude, speed?, heading? }
  */
-export const updateRideLocationService = async (driverId, rideId, locationData) => {
+export const updateRideLocationService = async (driverUserId, rideId, locationData) => {
   const { latitude, longitude, speed, heading } = locationData;
 
-  const ride = await Ride.findById(rideId);
+  const ride = await Ride.findById(rideId).populate('passengerId', 'userId');
   if (!ride) {
     throw new Error('Ride not found');
   }
 
-  if (ride.driverId.toString() !== driverId) {
+  const driver = await Driver.findOne({ userId: driverUserId });
+  if (!driver) {
+    throw new Error('Driver not found');
+  }
+  if (!ride.driverId || ride.driverId.toString() !== driver._id.toString()) {
     throw new Error('Unauthorized');
   }
 
