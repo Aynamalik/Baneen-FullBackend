@@ -57,6 +57,12 @@ const vehicleSchema = new mongoose.Schema({
   },
 });
 
+const emergencyContactSchema = new mongoose.Schema({
+  name: { type: String },
+  phone: { type: String, required: true },
+  relationship: { type: String, required: true },
+}, { _id: true });
+
 const availabilitySchema = new mongoose.Schema({
   status: {
     type: String,
@@ -187,6 +193,7 @@ const driverSchema = new mongoose.Schema(
       enum: ['OFFLINE', 'ONLINE', 'ON_RIDE'],
       default: 'OFFLINE'
     },
+    emergencyContacts: [emergencyContactSchema],
   },
   {
     timestamps: true,

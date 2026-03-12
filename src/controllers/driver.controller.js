@@ -28,6 +28,7 @@ export const getProfile = async (req, res) => {
         licenseImage: driver.licenseImage,
         vehicle: driver.vehicle,
         availability: driver.availability,
+        emergencyContacts: driver.emergencyContacts || [],
         rating: driver.rating,
         totalRides: driver.totalRides,
         completedRides: driver.completedRides,
@@ -70,6 +71,7 @@ export const updateProfile = async (req, res) => {
         licenseImage: driver.licenseImage,
         vehicle: driver.vehicle,
         availability: driver.availability,
+        emergencyContacts: driver.emergencyContacts || [],
         rating: driver.rating,
         totalRides: driver.totalRides,
         earnings: driver.earnings,
@@ -81,6 +83,83 @@ export const updateProfile = async (req, res) => {
   } catch (error) {
     logger.error('Update driver profile error:', error);
     return sendError(res, 'Failed to update profile', 500);
+  }
+};
+
+export const addEmergencyContact = async (req, res) => {
+  try {
+    const driverId = req.user.userId;
+    const { name, phone, relationship } = req.body;
+
+    if (!phone || !relationship) {
+      return sendError(res, 'Phone and relationship are required', 400);
+    }
+
+    const driver = await Driver.findOneAndUpdate(
+      { userId: driverId },
+      { $push: { emergencyContacts: { name, phone, relationship } } },
+      { new: true, runValidators: true }
+    );
+
+    if (!driver) {
+      return sendError(res, 'Driver profile not found', 404);
+    }
+
+    return sendSuccess(res, { emergencyContacts: driver.emergencyContacts }, 'Emergency contact added successfully');
+  } catch (error) {
+    logger.error('Add driver emergency contact error:', error);
+    return sendError(res, 'Failed to add emergency contact', 500);
+  }
+};
+
+export const updateEmergencyContact = async (req, res) => {
+  try {
+    const driverId = req.user.userId;
+    const contactId = req.params.id;
+    const { name, phone, relationship } = req.body;
+
+    const driver = await Driver.findOneAndUpdate(
+      { userId: driverId, 'emergencyContacts._id': contactId },
+      {
+        $set: {
+          'emergencyContacts.$.name': name,
+          'emergencyContacts.$.phone': phone,
+          'emergencyContacts.$.relationship': relationship,
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!driver) {
+      return sendError(res, 'Emergency contact not found', 404);
+    }
+
+    return sendSuccess(res, { emergencyContacts: driver.emergencyContacts }, 'Emergency contact updated successfully');
+  } catch (error) {
+    logger.error('Update driver emergency contact error:', error);
+    return sendError(res, 'Failed to update emergency contact', 500);
+  }
+};
+
+export const deleteEmergencyContact = async (req, res) => {
+  try {
+    const driverId = req.user.userId;
+    const contactId = req.params.id;
+
+    const driver = await Driver.findOneAndUpdate(
+      { userId: driverId },
+      { $pull: { emergencyContacts: { _id: contactId } } },
+      { new: true }
+    );
+
+    if (!driver) {
+      return sendError(res, 'Driver profile not found', 404);
+    }
+
+    return sendSuccess(res, { emergencyContacts: driver.emergencyContacts }, 'Emergency contact deleted successfully');
+  } catch (error) {
+    logger.error('Delete driver emergency contact error:', error);
+    return sendError(res, 'Failed to delete emergency contact', 500);
   }
 };
 

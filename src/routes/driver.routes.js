@@ -7,6 +7,9 @@ import {
   updateProfile,
   updateAvailability,
   setOnline,
+  addEmergencyContact,
+  updateEmergencyContact,
+  deleteEmergencyContact,
   registerVehicle,
   updateVehicle,
   getRideHistory,
@@ -26,6 +29,10 @@ router.put('/profile', updateProfile);
 
 router.put('/availability', updateAvailability);
 router.post('/online', setOnline);
+
+router.post('/emergency-contacts', addEmergencyContact);
+router.put('/emergency-contacts/:id', updateEmergencyContact);
+router.delete('/emergency-contacts/:id', deleteEmergencyContact);
 
 router.post('/vehicle', registerVehicle);
 router.put('/vehicle/:id', updateVehicle);

@@ -97,8 +97,9 @@ export const triggerSOSAlertService = async (userId, userRole, data) => {
     throw new Error('Location (latitude and longitude) is required. Enable GPS and try again, or ensure you have an active ride.');
   }
 
-  // Get emergency contacts from passenger profile
+  // Get emergency contacts from passenger or driver profile
   let emergencyContacts = [];
+  let userName = null;
   if (userRole === USER_ROLES.PASSENGER) {
     const passenger = await Passenger.findOne({ userId });
     if (passenger?.emergencyContacts?.length) {
@@ -109,13 +110,23 @@ export const triggerSOSAlertService = async (userId, userRole, data) => {
         notifiedAt: null,
       }));
     }
+    userName = passenger?.name;
+  } else if (userRole === USER_ROLES.DRIVER) {
+    const driver = await Driver.findOne({ userId });
+    if (driver?.emergencyContacts?.length) {
+      emergencyContacts = driver.emergencyContacts.map((ec) => ({
+        name: ec.name,
+        phone: ec.phone,
+        notified: false,
+        notifiedAt: null,
+      }));
+    }
+    userName = driver?.name;
   }
 
-  // Notify emergency contacts with live location (non-blocking)
+  // Notify emergency contacts with live location via SMS (includes Google Maps link)
   let notifiedContacts = [];
   try {
-    const passenger = await Passenger.findOne({ userId });
-    const userName = passenger?.name;
     notifiedContacts = await notifyEmergencyContacts(
       emergencyContacts,
       userName,
