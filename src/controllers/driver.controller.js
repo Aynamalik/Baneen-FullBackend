@@ -572,6 +572,62 @@ export const getEarningsStats = async (req, res) => {
   }
 };
 
+/**
+ * GET pending ride requests for driver (GET /drivers/rides/requests).
+ * Returns 200 with data: [] and pendingRidesCount: 0 when none or on error, never 500.
+ */
+export const getPendingRideRequests = async (req, res) => {
+  try {
+    const driverId = req.user.userId;
+    let result;
+    try {
+      result = await getPendingRidesForDriverService(driverId);
+    } catch (err) {
+      logger.debug('Pending rides not available:', err.message);
+      return res.status(200).json({
+        success: true,
+        data: [],
+        pendingRidesCount: 0,
+        message: 'No pending ride requests',
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: result.rides,
+      pendingRidesCount: result.count,
+      message: result.count > 0 ? `Found ${result.count} pending ride request(s)` : 'No pending ride requests',
+    });
+  } catch (error) {
+    logger.error('Get pending ride requests error:', error);
+    return res.status(200).json({
+      success: true,
+      data: [],
+      pendingRidesCount: 0,
+      message: 'No pending ride requests',
+    });
+  }
+};
+
+export const setOffline = async (req, res) => {
+  try {
+    const driverId = req.user.userId;
+    const driver = await Driver.findOne({ userId: driverId });
+    if (!driver) {
+      return sendError(res, 'Driver profile not found', 404);
+    }
+    driver.updateAvailability(DRIVER_AVAILABILITY.OFFLINE);
+    await driver.save();
+    return sendSuccess(
+      res,
+      { availability: driver.availability, status: driver.status },
+      'Driver is now offline'
+    );
+  } catch (error) {
+    logger.error('Set offline error:', error);
+    return sendError(res, 'Failed to set driver offline', 500);
+  }
+};
+
 export const setOnline = async (req, res) => {
   try {
     const driverId = req.user.userId;
