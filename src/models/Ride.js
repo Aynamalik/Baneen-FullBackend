@@ -146,6 +146,12 @@ const rideSchema = new mongoose.Schema({
   notes: { type: String },
   tags: [{ type: String }], // For filtering and analytics
 
+  // Driver matching response tracking
+  matching: {
+    rejectedDrivers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Driver' }],
+    lastRejectedAt: { type: Date }
+  },
+
   // Subscription Reference (if applicable)
   subscriptionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' }
 }, {

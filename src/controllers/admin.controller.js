@@ -15,17 +15,24 @@ import logger from '../utils/logger.js';
 
 export const getDashboardStats = async (req, res) => {
   try {
-    // Get current date for filtering
-    const today = new Date();
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    // Use independent date objects to avoid accidental mutation between ranges.
+    const now = new Date();
 
-    const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(now);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const startOfWeek = new Date(now);
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(endOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
 
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    endOfMonth.setHours(23, 59, 59, 999);
 
     // Parallel data fetching for better performance
     const [
@@ -90,17 +97,13 @@ export const getDashboardStats = async (req, res) => {
         createdAt: { $gte: startOfDay, $lte: endOfDay }
       }),
 
-      // Active drivers (drivers who have completed rides recently or are online)
+      // Active drivers based on explicit online/on-ride statuses.
+      // Keep both legacy (availability.status) and top-level status checks for compatibility.
       Driver.countDocuments({
         isApproved: true,
-        // Consider drivers active if they have a recent ride or are marked as available
         $or: [
-          { 'availability.isAvailable': true },
-          {
-            updatedAt: {
-              $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // Active in last 24 hours
-            }
-          }
+          { 'availability.status': { $in: ['available', 'busy'] } },
+          { status: { $in: ['ONLINE', 'ON_RIDE'] } },
         ]
       })
     ]);
@@ -116,6 +119,7 @@ export const getDashboardStats = async (req, res) => {
       activeRides: activeRides || 0,
       pendingDrivers: pendingDrivers || 0,
       todayRevenue: todayRevenue[0]?.total || 0,
+      weeklyRevenue: weekRevenue[0]?.total || 0,
       monthlyRevenue: monthRevenue[0]?.total || 0,
       todayRides: totalRidesToday || 0,
       completedRidesToday: completedRidesToday || 0,
@@ -126,7 +130,7 @@ export const getDashboardStats = async (req, res) => {
       newUsersToday: newUsersToday || 0,
       activeDrivers: activeDriversCount || 0,
       completionRate: totalRidesToday > 0
-        ? ((completedRidesToday / totalRidesToday) * 100).toFixed(1)
+        ? Number(((completedRidesToday / totalRidesToday) * 100).toFixed(1))
         : 0,
       recentActivity: [
         // TODO: Implement recent activity tracking with real data from database

@@ -10,6 +10,7 @@ import { processPayment } from './payment.service.js';
 import { useSubscriptionCredit } from './subscription.service.js';
 import { USER_ROLES, DRIVER_AVAILABILITY } from '../config/constants.js';
 import { uploadImage } from '../config/cloudinary.js';
+import { detectHelmetAndSeatbeltRoboflow } from './roboflowSafety.service.js';
 
 // Fare calculation constants
 const FARE_CONFIG = {
@@ -442,7 +443,7 @@ export const requestRideService = async (passengerId, rideData) => {
   };
 };
 export const acceptRideService = async (driverId, rideId) => {
-  const driver = await Driver.findOne({ userId: driverId });
+  const driver = await Driver.findOne({ userId: driverId }).populate('userId', 'phone');
   if (!driver) {
     throw new Error('Driver profile not found');
   }
@@ -502,6 +503,30 @@ export const acceptRideService = async (driverId, rideId) => {
 
   logger.info(`Ride ${rideId} accepted by driver ${driverId}`);
 
+  // Calculate ETA and distance for response and passenger notification
+  let driverDistance = null;
+  let driverETA = null;
+
+  if (driver.availability?.currentLocation?.latitude && driver.availability?.currentLocation?.longitude) {
+    const distance = calculateHaversineDistance(
+      driver.availability.currentLocation.latitude,
+      driver.availability.currentLocation.longitude,
+      ride.pickup.location.latitude,
+      ride.pickup.location.longitude
+    );
+
+    driverDistance = {
+      km: distance.distanceKm,
+      text: distance.distanceText
+    };
+
+    const eta = estimateTravelTime(distance.distanceKm, 30); // 30 km/h average speed
+    driverETA = {
+      minutes: Math.ceil(eta.duration / 60),
+      text: eta.durationText
+    };
+  }
+
   // 6️⃣ Notify passenger via socket and add to active rides tracking
   try {
     // Add to active rides tracking in socket service
@@ -536,30 +561,6 @@ export const acceptRideService = async (driverId, rideId) => {
   } catch (socketError) {
     logger.error('Socket notification failed:', socketError);
     // Don't fail the ride acceptance if socket fails
-  }
-
-  // Calculate ETA and distance for response
-  let driverDistance = null;
-  let driverETA = null;
-
-  if (driver.availability?.currentLocation?.latitude && driver.availability?.currentLocation?.longitude) {
-    const distance = calculateHaversineDistance(
-      driver.availability.currentLocation.latitude,
-      driver.availability.currentLocation.longitude,
-      ride.pickup.location.latitude,
-      ride.pickup.location.longitude
-    );
-
-    driverDistance = {
-      km: distance.distanceKm,
-      text: distance.distanceText
-    };
-
-    const eta = estimateTravelTime(distance.distanceKm, 30); // 30 km/h average speed
-    driverETA = {
-      minutes: Math.ceil(eta.duration / 60),
-      text: eta.durationText
-    };
   }
 
   return {
@@ -611,7 +612,23 @@ export const startRideService = async (driverId, rideId, startCoords, driverPhot
     throw new Error('Ride cannot be started at this stage');
   }
 
-  // 2️⃣ Upload and validate driver photo
+  // 2️⃣ Perform safety checks (Roboflow YOLO inference)
+  // Policy:
+  // - car/auto: seatbelt is required (helmet optional)
+  // - bike: helmet is required (seatbelt optional)
+  const requireSeatbelt = ride.vehicleType === 'car' || ride.vehicleType === 'auto';
+  const requireHelmet = ride.vehicleType === 'bike';
+
+  const safety = await detectHelmetAndSeatbeltRoboflow(driverPhotoFile.path);
+
+  if (requireHelmet && !safety.helmetDetected) {
+    throw new Error('Helmet not detected. Ride cannot be started.');
+  }
+  if (requireSeatbelt && !safety.seatbeltDetected) {
+    throw new Error('Seatbelt not detected. Ride cannot be started.');
+  }
+
+  // 3️⃣ Upload and store the driver photo only after safety passes
   logger.info('Uploading driver photo for ride verification...');
   let driverPhotoUrl;
   try {
@@ -629,10 +646,7 @@ export const startRideService = async (driverId, rideId, startCoords, driverPhot
     throw new Error('Failed to upload driver photo. Please try again.');
   }
 
-  // 3️⃣ Perform safety checks (helmet, seatbelt detection)
-  // TODO: Integrate with image processing service
-
-  // 3️⃣ Update ride status and tracking
+  // 4️⃣ Update ride status and tracking
   ride.status = 'in-progress';
   ride.startedAt = new Date();
   ride.tracking = {
@@ -652,10 +666,10 @@ export const startRideService = async (driverId, rideId, startCoords, driverPhot
     }]
   };
 
-  // Mark safety as verified and store driver photo
+  // Mark safety as verified and store driver photo + detection results
   ride.safety.verifiedAt = new Date();
-  ride.safety.helmetDetected = true;
-  ride.safety.seatbeltDetected = true;
+  ride.safety.helmetDetected = safety.helmetDetected;
+  ride.safety.seatbeltDetected = safety.seatbeltDetected;
   ride.safety.driverPhoto = driverPhotoUrl;
   ride.safety.driverPhotoUploadedAt = new Date();
 

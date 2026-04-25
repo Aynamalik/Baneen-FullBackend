@@ -347,10 +347,17 @@ class DriverMatchingService {
         throw new Error('Ride is no longer available for acceptance');
       }
 
+      const driver = await Driver.findOne({ userId: driverUserId });
+      if (!driver) {
+        throw new Error('Driver profile not found');
+      }
+
+      const alreadyRejected = (ride.matching?.rejectedDrivers || [])
+        .some((rejectedDriverId) => rejectedDriverId.toString() === driver._id.toString());
+
       if (accepted) {
-        const driver = await Driver.findOne({ userId: driverUserId });
-        if (!driver) {
-          throw new Error('Driver profile not found');
+        if (alreadyRejected) {
+          throw new Error('This driver has already rejected this ride');
         }
 
         ride.driverId = driver._id;
@@ -368,9 +375,24 @@ class DriverMatchingService {
           message: 'Ride successfully assigned to driver'
         };
       } else {
+        if (alreadyRejected) {
+          return {
+            success: true,
+            action: 'RIDE_REJECTED',
+            message: 'Driver has already rejected this ride'
+          };
+        }
+
+        ride.matching = ride.matching || {};
+        ride.matching.rejectedDrivers = ride.matching.rejectedDrivers || [];
+        ride.matching.rejectedDrivers.push(driver._id);
+        ride.matching.lastRejectedAt = new Date();
+        await ride.save();
+
         return {
           success: true,
           action: 'RIDE_REJECTED',
+          ride,
           message: 'Driver rejected the ride'
         };
       }
