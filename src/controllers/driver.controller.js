@@ -1,8 +1,8 @@
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Driver from '../models/Driver.js';
 import Ride from '../models/Ride.js';
 import Vehicle from '../models/Vehicle.js';
+import { uploadImage } from '../config/cloudinary.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { DRIVER_AVAILABILITY } from '../config/constants.js';
 import logger from '../utils/logger.js';
@@ -24,6 +24,7 @@ export const getProfile = async (req, res) => {
       driver: {
         _id: driver._id,
         name: driver.name,
+        address: driver.address,
         licenseNumber: driver.licenseNumber,
         licenseImage: driver.licenseImage,
         vehicle: driver.vehicle,
@@ -50,14 +51,87 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const driverId = req.user.userId;
-    const { name } = req.body;
+    const userId = req.user.userId;
+    const body = { ...(req.body || {}), ...((req.body?.driver && typeof req.body.driver === 'object') ? req.body.driver : {}) };
 
-    const driver = await Driver.findOneAndUpdate(
-      { userId: driverId },
-      { name },
-      { new: true, runValidators: true }
-    ).populate('userId', 'email phone role isVerified');
+    const name = body.name ?? body.fullName;
+    const address = body.address;
+    const licenseNumber = body.licenseNumber;
+    const licenseImage = body.licenseImage ?? body.license_image;
+    const phone = body.phone;
+    const alternatePhone = body.alternatePhone ?? body.alternate_phone;
+    const profileImage = body.profileImage ?? body.profile_image;
+
+    const driverUpdates = {};
+    if (name !== undefined && name !== null && String(name).trim() !== '') {
+      driverUpdates.name = String(name).trim();
+    }
+    if (address !== undefined && address !== null && String(address).trim() !== '') {
+      driverUpdates.address = String(address).trim();
+    }
+    if (licenseNumber !== undefined && licenseNumber !== null) {
+      const v = String(licenseNumber).trim();
+      driverUpdates.licenseNumber = v === '' ? null : v;
+    }
+    if (licenseImage !== undefined && licenseImage !== null && String(licenseImage).trim() !== '') {
+      driverUpdates.licenseImage = String(licenseImage).trim();
+    }
+
+    const userUpdates = {};
+    if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+      userUpdates.phone = String(phone).trim();
+    }
+    if (alternatePhone !== undefined && alternatePhone !== null) {
+      const v = String(alternatePhone).trim();
+      userUpdates.alternatePhone = v === '' ? null : v;
+    }
+    if (profileImage !== undefined && profileImage !== null && String(profileImage).trim() !== '') {
+      userUpdates.profileImage = String(profileImage).trim();
+    }
+
+    const files = req.files;
+    if (files?.profileImage?.[0]) {
+      try {
+        const result = await uploadImage(files.profileImage[0].path, { folder: 'baneen/profile' });
+        userUpdates.profileImage = result.url;
+      } catch (uploadErr) {
+        logger.error('Driver profile image upload failed:', uploadErr);
+        return sendError(res, 'Failed to upload profile image. Check Cloudinary configuration.', 500);
+      }
+    }
+    if (files?.licenseImage?.[0]) {
+      try {
+        const result = await uploadImage(files.licenseImage[0].path, { folder: 'baneen/driver-license' });
+        driverUpdates.licenseImage = result.url;
+      } catch (uploadErr) {
+        logger.error('Driver license image upload failed:', uploadErr);
+        return sendError(res, 'Failed to upload license image. Check Cloudinary configuration.', 500);
+      }
+    }
+
+    if (Object.keys(driverUpdates).length === 0 && Object.keys(userUpdates).length === 0) {
+      return sendError(
+        res,
+        'No updatable fields. Send JSON with name, address, phone, etc., or multipart form-data with profileImage / licenseImage files (and optional text fields).',
+        400
+      );
+    }
+
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(userId, userUpdates, { new: true, runValidators: true });
+    }
+
+    let driver = null;
+    if (Object.keys(driverUpdates).length > 0) {
+      driver = await Driver.findOneAndUpdate(
+        { userId },
+        driverUpdates,
+        { new: true, runValidators: true }
+      ).populate('userId', 'email phone role isVerified cnicImage profileImage alternatePhone');
+    } else {
+      driver = await Driver.findOne({ userId })
+        .populate('userId', 'email phone role isVerified cnicImage profileImage alternatePhone');
+    }
 
     if (!driver) {
       return sendError(res, 'Driver profile not found', 404);
@@ -67,6 +141,7 @@ export const updateProfile = async (req, res) => {
       driver: {
         _id: driver._id,
         name: driver.name,
+        address: driver.address,
         licenseNumber: driver.licenseNumber,
         licenseImage: driver.licenseImage,
         vehicle: driver.vehicle,
@@ -82,7 +157,7 @@ export const updateProfile = async (req, res) => {
     }, 'Profile updated successfully');
   } catch (error) {
     logger.error('Update driver profile error:', error);
-    return sendError(res, 'Failed to update profile', 500);
+    return sendError(res, error.message || 'Failed to update profile', 500);
   }
 };
 
@@ -306,10 +381,15 @@ export const updateVehicle = async (req, res) => {
 
 export const getRideHistory = async (req, res) => {
   try {
-    const driverId = req.user.userId;
+    const userId = req.user.userId;
     const { page = 1, limit = 10, status } = req.query;
 
-    const query = { driverId };
+    const driver = await Driver.findOne({ userId });
+    if (!driver) {
+      return sendError(res, 'Driver profile not found', 404);
+    }
+
+    const query = { driverId: driver._id };
     if (status) {
       query.status = status;
     }
@@ -342,12 +422,17 @@ export const getRideHistory = async (req, res) => {
 
 export const getRideDetails = async (req, res) => {
   try {
-    const driverId = req.user.userId;
+    const userId = req.user.userId;
     const rideId = req.params.id;
+
+    const driver = await Driver.findOne({ userId });
+    if (!driver) {
+      return sendError(res, 'Driver profile not found', 404);
+    }
 
     const ride = await Ride.findOne({
       _id: rideId,
-      driverId
+      driverId: driver._id
     })
     .populate('passengerId', 'name phone rating')
     .populate('payment');
@@ -366,14 +451,16 @@ export const getRideDetails = async (req, res) => {
 
 export const getEarnings = async (req, res) => {
   try {
-    const driverId = req.user.userId;
+    const userId = req.user.userId;
 
-    const driver = await Driver.findOne({ userId: driverId });
+    const driver = await Driver.findOne({ userId });
     if (!driver) {
       return sendError(res, 'Driver profile not found', 404);
     }
 
-    // Get earnings breakdown by time period
+    const rideDriverId = driver._id;
+
+    // Get earnings breakdown by time period (Ride.driverId = Driver._id, not User._id)
     const [
       todayEarnings,
       weekEarnings,
@@ -384,7 +471,7 @@ export const getEarnings = async (req, res) => {
       Ride.aggregate([
         {
           $match: {
-            driverId: mongoose.Types.ObjectId(driverId),
+            driverId: rideDriverId,
             status: 'completed',
             completedAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
           }
@@ -395,7 +482,7 @@ export const getEarnings = async (req, res) => {
       Ride.aggregate([
         {
           $match: {
-            driverId: mongoose.Types.ObjectId(driverId),
+            driverId: rideDriverId,
             status: 'completed',
             completedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
           }
@@ -407,7 +494,7 @@ export const getEarnings = async (req, res) => {
       Ride.aggregate([
         {
           $match: {
-            driverId: mongoose.Types.ObjectId(driverId),
+            driverId: rideDriverId,
             status: 'completed',
             completedAt: { $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
           }
@@ -419,7 +506,7 @@ export const getEarnings = async (req, res) => {
       Ride.aggregate([
         {
           $match: {
-            driverId: mongoose.Types.ObjectId(driverId),
+            driverId: rideDriverId,
             status: 'completed'
           }
         },
@@ -427,14 +514,16 @@ export const getEarnings = async (req, res) => {
       ]),
     ]);
 
+    const e = driver.earnings || { total: 0, pending: 0, withdrawn: 0 };
+
     return sendSuccess(res, {
       earnings: {
         today: todayEarnings[0]?.total || 0,
         thisWeek: weekEarnings[0]?.total || 0,
         thisMonth: monthEarnings[0]?.total || 0,
         total: totalEarnings[0]?.total || 0,
-        pending: driver.earnings.pending,
-        withdrawn: driver.earnings.withdrawn,
+        pending: e.pending ?? 0,
+        withdrawn: e.withdrawn ?? 0,
       }
     }, 'Earnings retrieved successfully');
   } catch (error) {
@@ -445,12 +534,14 @@ export const getEarnings = async (req, res) => {
 
 export const getDriverStats = async (req, res) => {
   try {
-    const driverId = req.user.userId;
+    const userId = req.user.userId;
 
-    const driver = await Driver.findOne({ userId: driverId });
+    const driver = await Driver.findOne({ userId });
     if (!driver) {
       return sendError(res, 'Driver profile not found', 404);
     }
+
+    const rideDriverId = driver._id;
 
     const [
       totalRides,
@@ -459,21 +550,21 @@ export const getDriverStats = async (req, res) => {
       thisMonthRides,
       thisWeekRides
     ] = await Promise.all([
-      Ride.countDocuments({ driverId }),
-      Ride.countDocuments({ driverId, status: 'completed' }),
-      Ride.countDocuments({ driverId, status: 'cancelled' }),
+      Ride.countDocuments({ driverId: rideDriverId }),
+      Ride.countDocuments({ driverId: rideDriverId, status: 'completed' }),
+      Ride.countDocuments({ driverId: rideDriverId, status: 'cancelled' }),
       Ride.countDocuments({
-        driverId,
+        driverId: rideDriverId,
         createdAt: { $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
       }),
       Ride.countDocuments({
-        driverId,
+        driverId: rideDriverId,
         createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
       }),
     ]);
 
     const acceptedRides = await Ride.countDocuments({
-      driverId,
+      driverId: rideDriverId,
       status: { $in: ['accepted', 'in-progress', 'completed'] }
     });
 
@@ -532,7 +623,7 @@ export const getEarningsStats = async (req, res) => {
     const earnings = await Ride.aggregate([
       {
         $match: {
-          driverId: mongoose.Types.ObjectId(driverId),
+          driverId: driver._id,
           status: 'completed',
           completedAt: { $gte: dateFilter }
         }

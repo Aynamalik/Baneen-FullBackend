@@ -1043,18 +1043,20 @@ export const rateRideService = async (userId, userRole, rideId, ratingData) => {
  */
 export const getRideDetailsService = async (userId, userRole, rideId) => {
   const ride = await Ride.findById(rideId)
-    .populate('passengerId', 'name rating totalRides')
-    .populate('driverId', 'name rating totalRides vehicle')
-    .populate('passengerId.userId', 'name phone')
-    .populate('driverId.userId', 'name phone');
+    .populate('passengerId', 'name rating totalRides userId')
+    .populate('driverId', 'name rating totalRides vehicle userId')
+    .populate('passengerId.userId', 'name phone profileImage')
+    .populate('driverId.userId', 'name phone profileImage');
 
   if (!ride) {
     throw new Error('Ride not found');
   }
 
-  // Check authorization
-  const isPassenger = userRole === USER_ROLES.PASSENGER && ride.passengerId.userId.toString() === userId;
-  const isDriver = userRole === USER_ROLES.DRIVER && ride.driverId && ride.driverId.userId.toString() === userId;
+  // Check authorization (userId must be in populate select above or nested ref is missing)
+  const passengerUserId = ride.passengerId?.userId?.toString?.();
+  const driverUserId = ride.driverId?.userId?.toString?.();
+  const isPassenger = userRole === USER_ROLES.PASSENGER && passengerUserId === userId;
+  const isDriver = userRole === USER_ROLES.DRIVER && !!driverUserId && driverUserId === userId;
   const isAdmin = userRole === USER_ROLES.ADMIN;
 
   if (!isPassenger && !isDriver && !isAdmin) {

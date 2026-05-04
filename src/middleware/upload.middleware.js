@@ -184,4 +184,14 @@ export const uploadProfilePhoto = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
 }).single('profileImage');
 
+/** Optional files for PUT /drivers/profile (profile + license photos). Text fields stay in req.body. */
+export const uploadDriverProfileFiles = multer({
+  storage: profilePhotoStorage,
+  fileFilter: driverPhotoFilter,
+  limits: { fileSize: 5 * 1024 * 1024, files: 4 },
+}).fields([
+  { name: 'profileImage', maxCount: 1 },
+  { name: 'licenseImage', maxCount: 1 },
+]);
+
 export default upload;

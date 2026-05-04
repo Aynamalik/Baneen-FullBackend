@@ -1,12 +1,13 @@
 import nodemailer from 'nodemailer';
 import logger from '../utils/logger.js';
 
-// Create transporter
-const createTransporter = () => {
-  return nodemailer.createTransporter({
+// Nodemailer API is createTransport (not createTransporter).
+const createMailTransport = () => {
+  const port = parseInt(process.env.EMAIL_PORT, 10) || 587;
+  return nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT),
-    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
+    port,
+    secure: String(process.env.EMAIL_PORT) === '465',
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -16,7 +17,11 @@ const createTransporter = () => {
 
 export const sendEmail = async (to, subject, html) => {
   try {
-    const transporter = createTransporter();
+    if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS || !process.env.EMAIL_FROM) {
+      logger.error('Email env missing: set EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM');
+      throw new Error('Email is not configured on the server');
+    }
+    const transporter = createMailTransport();
 
     const mailOptions = {
       from: process.env.EMAIL_FROM,
@@ -32,7 +37,8 @@ export const sendEmail = async (to, subject, html) => {
     return { success: true, message: 'Email sent successfully', messageId: info.messageId };
   } catch (error) {
     logger.error('Email sending error:', error);
-    throw new Error('Failed to send email');
+    const detail = error?.message || 'Failed to send email';
+    throw new Error(detail);
   }
 };
 

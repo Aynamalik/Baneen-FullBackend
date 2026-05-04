@@ -498,7 +498,7 @@ export const getAllDrivers = async (req, res) => {
     }
 
     const drivers = await Driver.find(query)
-      .populate('userId', 'name email phone isVerified isBlocked')
+      .populate('userId', 'name email phone isVerified isBlocked cnic cnicImage profileImage')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -533,7 +533,10 @@ export const getAllDrivers = async (req, res) => {
 export const getDriverDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const driver = await Driver.findById(id).populate('userId', 'name email phone isVerified isBlocked cnic');
+    const driver = await Driver.findById(id).populate(
+      'userId',
+      'name email phone isVerified isBlocked cnic cnicImage profileImage'
+    );
     if (!driver) {
       return res.status(404).json({ success: false, message: 'Driver not found' });
     }
@@ -568,7 +571,7 @@ export const getDriverDetails = async (req, res) => {
 export const getPendingDrivers = async (req, res) => {
   try {
     const drivers = await Driver.find({ isApproved: false })
-      .populate('userId', 'name email phone cnic cnicImage')
+      .populate('userId', 'name email phone cnic cnicImage profileImage')
       .sort({ createdAt: -1 });
 
     res.json({

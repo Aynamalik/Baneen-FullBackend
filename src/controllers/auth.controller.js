@@ -8,7 +8,7 @@ import {
 } from '../services/auth.service.js';
 import { uploadImage } from '../config/cloudinary.js';
 import { verifyOtpCode } from "../utils/otp.js";
-import { generateAndStoreOTP, verifyOTP as verifyOTPService, overwriteStoredOtp, generateResetToken, verifyResetToken, storeRegistrationData, getRegistrationData, removeRegistrationData, generateVerificationToken, getPhoneFromVerificationToken, removeVerificationToken } from '../services/otp.service.js';
+import { generateAndStoreOTP, verifyOTP as verifyOTPService, generateResetToken, verifyResetToken, storeRegistrationData, getRegistrationData, removeRegistrationData, generateVerificationToken, getPhoneFromVerificationToken, removeVerificationToken } from '../services/otp.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { formatPhoneNumber, isValidPhone } from '../utils/helpers.js';
 import User from '../models/User.js';
@@ -18,15 +18,81 @@ import { sendSMS } from '../services/sms.service.js';
 import { sendOTPEmail } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
 
-/** Use bypass OTP 123456 when Twilio fails (trial: unverified number or daily limit exceeded) */
-const shouldUseOtpBypass = (smsError) => {
-  const msg = (smsError?.message || '').toLowerCase();
+/** Known test phones: skip real SMS in development or when ALLOW_SMS_OTP_TEST_NUMBERS=true (staging). */
+const OTP_TEST_PHONES = new Set(['1234', '1234567890', '0000000000', '03001234567']);
+
+const shouldSkipSmsForTestPhone = (phone) => {
+  if (phone == null) return false;
+  const p = String(phone).trim();
+  if (!OTP_TEST_PHONES.has(p)) return false;
   return (
-    msg.includes('not verified') ||
-    msg.includes('not verified for this twilio account') ||
-    msg.includes('daily messages limit') ||
-    msg.includes('exceeded')
+    process.env.NODE_ENV === 'development' ||
+    process.env.ALLOW_SMS_OTP_TEST_NUMBERS === 'true'
   );
+};
+
+/** Include generated OTP in JSON (unsafe if SMS works — use only for dev/staging). */
+const shouldReturnOtpInResponse = () =>
+  process.env.RETURN_OTP_IN_RESPONSE === 'true' || process.env.NODE_ENV === 'development';
+
+/** Merge `otp` into API payload when enabled (new random OTP stays stored if SMS fails). */
+const attachOtpIfEnabled = (data, otp) => {
+  if (!shouldReturnOtpInResponse() || otp == null) return data;
+  const otpField = { otp: String(otp) };
+  if (data == null) return otpField;
+  return { ...data, ...otpField };
+};
+
+const logSmsSendFailure = (otpStorageKey, smsError) => {
+  logger.warn(
+    `SMS send failed for key "${otpStorageKey}": ${smsError?.message || smsError?.code || smsError}. OTP unchanged in store; set RETURN_OTP_IN_RESPONSE=true or check logs.`
+  );
+};
+
+/** Forgot / reset: find user when request phone format ≠ DB (e.g. 0333… vs +9233…). */
+const findUserByEmailOrPhone = async (email, phone) => {
+  const conditions = [];
+  if (email) {
+    conditions.push({ email: String(email).toLowerCase().trim() });
+  }
+  if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
+    const p = String(phone).trim();
+    const formatted = formatPhoneNumber(p);
+    conditions.push({ phone: p }, { phone: formatted });
+    const digits = p.replace(/\D/g, '');
+    if (digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      conditions.push(
+        { phone: `+92${last10}` },
+        { phone: `0${last10}` },
+        { phone: last10 },
+        { phone: `92${last10}` }
+      );
+    }
+  }
+  if (conditions.length === 0) return null;
+  return User.findOne({ $or: conditions });
+};
+
+const findUserByResetIdentifier = async (identifier) => {
+  if (identifier == null || String(identifier).trim() === '') return null;
+  const id = String(identifier).trim();
+  if (id.includes('@')) {
+    return User.findOne({ email: id.toLowerCase() });
+  }
+  const formatted = formatPhoneNumber(id);
+  const digits = id.replace(/\D/g, '');
+  const or = [{ phone: id }, { phone: formatted }];
+  if (digits.length >= 10) {
+    const last10 = digits.slice(-10);
+    or.push(
+      { phone: `+92${last10}` },
+      { phone: `0${last10}` },
+      { phone: last10 },
+      { phone: `92${last10}` }
+    );
+  }
+  return User.findOne({ $or: or });
 };
 
 export const registerDriver = async (req,res) =>{
@@ -82,11 +148,11 @@ export const registerDriver = async (req,res) =>{
       type: 'driver'
     };
 
-    const isTestNumber = process.env.NODE_ENV === 'development' && (userData.phone === '1234' || userData.phone === '1234567890' || userData.phone === '0000000000');
-    const registrationKey = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+    const skipRealSms = shouldSkipSmsForTestPhone(userData.phone);
+    const registrationKey = skipRealSms ? userData.phone : formatPhoneNumber(userData.phone);
     await storeRegistrationData(registrationKey, registrationData);
 
-    const phoneForOTP = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+    const phoneForOTP = skipRealSms ? userData.phone : formatPhoneNumber(userData.phone);
 
     logger.info(`Original phone: ${userData.phone}, Phone for OTP: ${phoneForOTP}`);
 
@@ -95,19 +161,14 @@ export const registerDriver = async (req,res) =>{
 
     const verificationToken = await generateVerificationToken(phoneForOTP);
 
-    if (isTestNumber) {
+    if (skipRealSms) {
       logger.info(`Skipping SMS send for test phone number: ${userData.phone}. OTP: ${otp}`);
     } else {
       const formattedPhone = formatPhoneNumber(userData.phone);
       try {
         await sendSMS(formattedPhone, `Your Baneen driver registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
       } catch (smsError) {
-        if (shouldUseOtpBypass(smsError)) {
-          logger.warn(`SMS failed (${smsError?.message || 'e.g. unverified/daily limit'}). Use OTP 123456 to verify.`);
-          await overwriteStoredOtp(phoneForOTP, '123456');
-        } else {
-          throw smsError;
-        }
+        logSmsSendFailure(phoneForOTP, smsError);
       }
     }
 
@@ -120,10 +181,13 @@ export const registerDriver = async (req,res) =>{
 
     return sendSuccess(
       res,
-      {
-        message: 'OTP sent to your phone. Please verify to complete registration.',
-        phone: userData.phone,
-      },
+      attachOtpIfEnabled(
+        {
+          message: 'OTP sent to your phone. Please verify to complete registration.',
+          phone: userData.phone,
+        },
+        otp
+      ),
       'Registration OTP sent successfully'
     );
   } catch (error) {
@@ -299,11 +363,11 @@ export const registerPassenger = async (req, res) => {
       type: 'passenger'
     };
 
-    const isTestNumber = process.env.NODE_ENV === 'development' && (userData.phone === '1234' || userData.phone === '1234567890' || userData.phone === '0000000000');
-    const registrationKey = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+    const skipRealSms = shouldSkipSmsForTestPhone(userData.phone);
+    const registrationKey = skipRealSms ? userData.phone : formatPhoneNumber(userData.phone);
     await storeRegistrationData(registrationKey, registrationData);
 
-    const phoneForOTP = isTestNumber ? userData.phone : formatPhoneNumber(userData.phone);
+    const phoneForOTP = skipRealSms ? userData.phone : formatPhoneNumber(userData.phone);
 
     logger.info(`Original phone: ${userData.phone}, Phone for OTP: ${phoneForOTP}`);
 
@@ -312,19 +376,14 @@ export const registerPassenger = async (req, res) => {
 
     const verificationToken = await generateVerificationToken(phoneForOTP);
 
-    if (isTestNumber) {
+    if (skipRealSms) {
       logger.info(`Skipping SMS send for test phone number: ${userData.phone}. OTP: ${otp}`);
     } else {
       const formattedPhone = formatPhoneNumber(userData.phone);
       try {
         await sendSMS(formattedPhone, `Your Baneen passenger registration OTP is: ${otp}. This OTP will expire in 10 minutes.`);
       } catch (smsError) {
-        if (shouldUseOtpBypass(smsError)) {
-          logger.warn(`SMS failed (${smsError?.message || 'e.g. unverified/daily limit'}). Use OTP 123456 to verify.`);
-          await overwriteStoredOtp(phoneForOTP, '123456');
-        } else {
-          throw smsError;
-        }
+        logSmsSendFailure(phoneForOTP, smsError);
       }
     }
 
@@ -337,10 +396,13 @@ export const registerPassenger = async (req, res) => {
 
     return sendSuccess(
       res,
-      {
-        message: 'OTP sent to your phone. Please verify to complete registration.',
-        phone: userData.phone,
-      },
+      attachOtpIfEnabled(
+        {
+          message: 'OTP sent to your phone. Please verify to complete registration.',
+          phone: userData.phone,
+        },
+        otp
+      ),
       'Registration OTP sent successfully'
     );
   } catch (error) {
@@ -445,17 +507,12 @@ export const requestOTP = async (req, res) => {
     try {
       await sendSMS(formattedPhone, `Your Baneen OTP is ${otp}`);
     } catch (smsError) {
-      if (shouldUseOtpBypass(smsError)) {
-        logger.warn(`SMS failed (${smsError?.message || 'e.g. unverified/daily limit'}). Use OTP 123456 to verify.`);
-        await overwriteStoredOtp(formattedPhone, '123456');
-      } else {
-        throw smsError;
-      }
+      logSmsSendFailure(formattedPhone, smsError);
     }
 
     return sendSuccess(
       res,
-      null,
+      attachOtpIfEnabled(null, otp),
       'OTP sent to your phone'
     );
   } catch (error) {
@@ -548,12 +605,7 @@ export const forgotPassword = async (req, res) => {
     if (!email && !phone) {
       return sendError(res, 'Email or phone is required', 400);
     }
-    const user = await User.findOne({
-      $or: [
-        ...(email ? [{ email }] : []),
-        ...(phone ? [{ phone }] : [])
-      ],
-    });
+    const user = await findUserByEmailOrPhone(email, phone);
 
     if (!user) {
       return sendSuccess(
@@ -564,49 +616,55 @@ export const forgotPassword = async (req, res) => {
     }
 
     let deliveryMethod = '';
+    /** Cookie + OTP store key must match verify-reset-otp lookup. */
+    let sessionIdentifier = '';
+    let otpForResponse = null;
 
     if (phone) {
       try {
-        const isTestNumber = process.env.NODE_ENV === 'development' && (phone === '1234' || phone === '1234567890' || phone === '0000000000' || phone === '03001234567');
-        const phoneForOTP = isTestNumber ? phone : formatPhoneNumber(phone);
+        const skipRealSms = shouldSkipSmsForTestPhone(phone);
+        const phoneForOTP = skipRealSms ? String(phone).trim() : formatPhoneNumber(phone);
+        sessionIdentifier = phoneForOTP;
 
         const otp = await generateAndStoreOTP(phoneForOTP);
+        otpForResponse = otp;
 
-        if (isTestNumber) {
+        if (skipRealSms) {
           logger.info(`Skipping SMS send for test phone number: ${phone}. OTP: ${otp}`);
         } else {
           try {
             await sendSMS(phoneForOTP, `Your Baneen password reset OTP is: ${otp}`);
           } catch (smsError) {
-            if (shouldUseOtpBypass(smsError)) {
-              logger.warn(`SMS failed (${smsError?.message || 'e.g. unverified/daily limit'}). Use OTP 123456 to verify.`);
-              await overwriteStoredOtp(phoneForOTP, '123456');
-            } else {
-              throw smsError;
-            }
+            logSmsSendFailure(phoneForOTP, smsError);
           }
         }
 
         deliveryMethod = 'phone';
         logger.info(`Password reset OTP sent to phone: ${phoneForOTP}`);
       } catch (error) {
-        logger.error('Failed to send SMS:', error);
+        logger.error('Failed to send password reset OTP (non-SMS):', error);
         return sendError(res, 'Failed to send OTP to phone. Please try again later.', 500);
       }
     } else if (email) {
+      const normEmail = String(email).toLowerCase().trim();
+      sessionIdentifier = normEmail;
       try {
-        const otp = await generateAndStoreOTP(email);
-        await sendOTPEmail(email, otp);
+        const otp = await generateAndStoreOTP(normEmail);
+        otpForResponse = otp;
+        await sendOTPEmail(normEmail, otp);
         deliveryMethod = 'email';
-        logger.info(`Password reset OTP sent to email: ${email}`);
+        logger.info(`Password reset OTP sent to email: ${normEmail}`);
       } catch (error) {
         logger.error('Failed to send email:', error);
+        const msg = (error?.message || '').toLowerCase();
+        if (msg.includes('not configured')) {
+          return sendError(res, 'Email is not configured on the server. Use phone reset or set EMAIL_* env vars.', 503);
+        }
         return sendError(res, 'Failed to send OTP to email. Please try again later.', 500);
       }
     }
 
-    const identifier = phone || email;
-    res.cookie('resetIdentifier', identifier, {
+    res.cookie('resetIdentifier', sessionIdentifier, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -615,10 +673,13 @@ export const forgotPassword = async (req, res) => {
 
     return sendSuccess(
       res,
-      {
-        message: `Password reset OTP sent to your ${deliveryMethod}`,
-        deliveryMethod
-      },
+      attachOtpIfEnabled(
+        {
+          message: `Password reset OTP sent to your ${deliveryMethod}`,
+          deliveryMethod,
+        },
+        otpForResponse
+      ),
       'Password reset requested'
     );
   } catch (error) {
@@ -637,29 +698,18 @@ export const verifyResetOtp = async (req, res) => {
     }
 
     // Normalize identifier for OTP lookup (must match what forgot-password used)
-    const isTestNumber = process.env.NODE_ENV === 'development' &&
-      ['1234', '1234567890', '0000000000', '03001234567'].includes(identifier);
+    const skipRealSms = shouldSkipSmsForTestPhone(identifier);
     const isPhone = /^(\+92|92|0)?[0-9]{10}$/.test(String(identifier).replace(/\D/g, ''));
     const otpLookupKey = isPhone
-      ? (isTestNumber ? identifier : formatPhoneNumber(identifier))
-      : identifier;
+      ? (skipRealSms ? String(identifier).trim() : formatPhoneNumber(identifier))
+      : String(identifier).toLowerCase().trim();
 
     const isValid = await verifyOTPService(otpLookupKey, otp);
     if (!isValid) {
       return sendError(res, 'Invalid or expired OTP', 400);
     }
 
-    // Find user - try both raw and formatted phone for DB lookup
-    const phoneQuery = isPhone
-      ? [{ phone: identifier }, { phone: formatPhoneNumber(identifier) }]
-      : [];
-    const user = await User.findOne({
-      $or: [
-        { email: identifier },
-        { phone: identifier },
-        ...phoneQuery,
-      ],
-    });
+    const user = await findUserByResetIdentifier(identifier);
 
     if (!user) {
       return sendError(res, 'User not found', 404);

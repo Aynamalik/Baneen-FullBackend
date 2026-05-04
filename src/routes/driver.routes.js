@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/role.middleware.js';
+import { uploadDriverProfileFiles, cleanupTempFiles } from '../middleware/upload.middleware.js';
 import { USER_ROLES } from '../config/constants.js';
 import {
   getProfile,
@@ -27,7 +28,7 @@ router.use(authenticate);
 router.use(requireRole([USER_ROLES.DRIVER]));
 
 router.get('/profile', getProfile);
-router.put('/profile', updateProfile);
+router.put('/profile', uploadDriverProfileFiles, cleanupTempFiles, updateProfile);
 
 router.put('/availability', updateAvailability);
 router.post('/online', setOnline);
