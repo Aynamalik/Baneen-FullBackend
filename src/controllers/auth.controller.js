@@ -524,26 +524,35 @@ export const requestOTP = async (req, res) => {
 
 export const refreshToken = async (req, res) => {
   try {
-    const refreshToken = req.cookies?.refreshToken;
+    // Web: httpOnly cookie. Mobile (Flutter): JSON body { "refreshToken": "..." } from secure storage.
+    const refreshTokenValue =
+      (typeof req.body?.refreshToken === 'string' && req.body.refreshToken.trim() !== ''
+        ? req.body.refreshToken.trim()
+        : null) || req.cookies?.refreshToken;
 
-    if (!refreshToken) {
+    if (!refreshTokenValue) {
       return sendError(res, 'Refresh token is required', 400);
     }
 
-    const result = await refreshAccessToken(refreshToken);
+    const result = await refreshAccessToken(refreshTokenValue);
 
     const cookieOptions = {
       httpOnly: true,
-      secure: false, 
+      secure: false,
       sameSite: 'lax',
       maxAge: 15 * 60 * 1000, // 15 minutes
     };
 
     res.cookie('accessToken', result.accessToken, cookieOptions);
 
-    return sendSuccess(res, {
-      message: 'Token refreshed successfully. New access token set in cookie.'
-    }, 'Token refreshed successfully');
+    return sendSuccess(
+      res,
+      {
+        accessToken: result.accessToken,
+        message: 'Token refreshed successfully. New access token set in cookie.',
+      },
+      'Token refreshed successfully'
+    );
   } catch (error) {
     logger.error('Token refresh error:', error);
     return sendError(res, error.message || 'Token refresh failed', 401);
